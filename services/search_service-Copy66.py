@@ -78,8 +78,7 @@ def extract_email(text):
     return email_match.group(0) if email_match else None
 
 def format_email_field(name, email):
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Formateando campo de correo: name=%s, email=%s", name, email)
+    logger.debug("Formateando campo de correo: name=%s, email=%s", name, email)
     if email:
         name = name.strip() if name else ''
         return f"{name} <{email}>" if name else f"<{email}>"
@@ -105,14 +104,14 @@ def get_email_addresses(prefix='', limit=50, user=None):
             return []
         from_addresses = emails_collection.distinct('from', {'mailbox_id': {'$in': user_mailboxes}})
         to_addresses = emails_collection.distinct('to', {'mailbox_id': {'$in': user_mailboxes}})
-      
+       
         all_addresses = set()
         for address in from_addresses + to_addresses:
             if not address or address == 'N/A':
                 continue
             sub_addresses = [addr.strip() for addr in address.split(',') if addr.strip()]
             all_addresses.update(sub_addresses)
-      
+       
         formatted_addresses = []
         for address in all_addresses:
             match = re.match(r'(.*?)\s*(?:<(.+?)>)?$', address, re.IGNORECASE) if isinstance(address, str) else None
@@ -125,9 +124,9 @@ def get_email_addresses(prefix='', limit=50, user=None):
                     if prefix and not normalize_text(formatted).startswith(normalize_text(prefix)):
                         continue
                     formatted_addresses.append(formatted)
-      
+       
         formatted_addresses = sorted(set(formatted_addresses))[:limit]
-        logger.info("Devolviendo %d direcciones formateadas", len(formatted_addresses))  # Aggregate: count only
+        logger.debug("Devolviendo %d direcciones formateadas", len(formatted_addresses))
         return formatted_addresses
     except Exception as e:
         logger.error("Error al obtener direcciones de correo: %s", str(e), exc_info=True)
@@ -203,13 +202,12 @@ def get_conversation_emails(email1, email2, start_date, end_date, user=None):
                 }
             }
         ]
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Ejecutando pipeline MongoDB: {pipeline}")
+        logger.debug(f"Ejecutando pipeline MongoDB: {pipeline}")
         start_time = datetime.now()
         emails = list(emails_collection.aggregate(pipeline))
-        logger.info(f"Pipeline MongoDB ejecutado: {len(emails)} emails encontrados en {(datetime.now() - start_time).total_seconds():.2f}s")  # Aggregate: count + time
+        logger.debug(f"Pipeline MongoDB ejecutado en %s segundos", (datetime.now() - start_time).total_seconds())
         if not emails:
-            logger.warning("No se encontraron correos. Verificando datos en la colección...")  # Reduced: no per-sample log
+            logger.debug("No se encontraron correos. Verificando datos en la colección...")
             sample_emails = list(emails_collection.find(
                 {'mailbox_id': {'$in': user_mailboxes}, '$or': [
                     {'from': {'$regex': email1_escaped, '$options': 'i'}},
@@ -217,8 +215,7 @@ def get_conversation_emails(email1, email2, start_date, end_date, user=None):
                 ]},
                 {'from': 1, 'to': 1, 'date': 1}
             ).limit(5))
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Muestra de correos para email1: {len(sample_emails)} items")
+            logger.debug(f"Muestra de correos para email1: {sample_emails}")
             sample_emails = list(emails_collection.find(
                 {'mailbox_id': {'$in': user_mailboxes}, '$or': [
                     {'from': {'$regex': email2_escaped, '$options': 'i'}},
@@ -226,10 +223,9 @@ def get_conversation_emails(email1, email2, start_date, end_date, user=None):
                 ]},
                 {'from': 1, 'to': 1, 'date': 1}
             ).limit(5))
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Muestra de correos para email2: {len(sample_emails)} items")
+            logger.debug(f"Muestra de correos para email2: {sample_emails}")
         results = []
-        for email in emails:  # Loop: no per-item log
+        for email in emails:
             email['index'] = str(email.get('index', 'N/A'))
             email['message_id'] = str(email.get('message_id', 'N/A'))
             results.append({
@@ -241,7 +237,7 @@ def get_conversation_emails(email1, email2, start_date, end_date, user=None):
                 'date': email.get('date', ''),
                 'description': email.get('summary', 'Sin resumen')
             })
-        logger.info(f"Devolviendo {len(results)} correos de conversación procesados")
+        logger.debug(f"Devolviendo {len(results)} correos de conversación")
         return results
     except Exception as e:
         logger.error(f"Error al buscar correos de conversación: {str(e)}", exc_info=True)
@@ -251,8 +247,7 @@ def get_email_by_id(identifier, is_index=False):
     logger.info("Obteniendo correo con identifier: %s, is_index: %s", identifier, is_index)
     try:
         query_field = 'index' if is_index else 'message_id'
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Buscando en campo: {query_field}")
+        logger.debug(f"Buscando en campo: {query_field}")
         email = emails_collection.find_one(
             {query_field: str(identifier)},
             {
@@ -284,8 +279,7 @@ def get_email_by_id(identifier, is_index=False):
             return None
         from_field = email.get('from', '')
         from_email = email.get('from_email', '') or extract_email(from_field)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Procesando from_email_field: from_field=%s, email=%s", from_field, from_email)
+        logger.debug("Procesando from_email_field: from_field=%s, email=%s", from_field, from_email)
         from_match = re.match(r'(.*)<(.+)>', from_field, re.IGNORECASE) if isinstance(from_field, str) else None
         if from_match:
             from_name, from_email_from_field = from_match.groups()
@@ -299,8 +293,7 @@ def get_email_by_id(identifier, is_index=False):
             email['from'] = 'N/A'
         to_field = email.get('to', '')
         to_email = email.get('to_email', '') or extract_email(to_field)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Procesando to_email_field: to_field=%s, to_email=%s", to_field, to_email)
+        logger.debug("Procesando to_email_field: to_field=%s, to_email=%s", to_field, to_email)
         to_match = re.match(r'(.*)<(.+)>', to_field, re.IGNORECASE) if isinstance(to_field, str) else None
         if to_match:
             to_name, to_email_from_field = to_match.groups()
@@ -314,8 +307,7 @@ def get_email_by_id(identifier, is_index=False):
             email['to'] = 'N/A'
         email['summary'] = email.get('summary', 'Sin resumen')
         email['relevant_terms'] = email.get('relevant_terms', [])
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Correo procesado: from=%s, to=%s, index=%s, message_id=%s", email['from'], email['to'], email['index'], email['message_id'])
+        logger.debug("Correo procesado: from=%s, to=%s, index=%s, message_id=%s", email['from'], email['to'], email['index'], email['message_id'])
         return email
     except Exception as e:
         logger.error("Error al obtener correo: %s", str(e), exc_info=True)
@@ -369,17 +361,17 @@ def submit_bulk_feedback(query, filter_data, processed_query, intent, terms, que
         if filter_conditions:
             conditions['$and'] = conditions.get('$and', []) + filter_conditions
         final_conditions = {**text_query, **conditions}
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Condiciones de filtrado finales para bulk feedback: %s", final_conditions)
+        logger.debug("Condiciones de filtrado finales para bulk feedback: %s", final_conditions)
         start_time = datetime.now()
         cursor = emails_collection.find(final_conditions, {'message_id': 1}).limit(1000)
         message_ids = [email['message_id'] for email in cursor if 'message_id' in email]
-        logger.info(f"Found {len(message_ids)} emails for bulk feedback in {(datetime.now() - start_time).total_seconds():.2f}s")  # Aggregate
+        logger.debug("Found %d emails for bulk feedback in %s seconds", len(message_ids), (datetime.now() - start_time).total_seconds())
         affected_count = 0
-        for message_id in message_ids:  # Loop: no per-save log
+        for message_id in message_ids:
             try:
                 save_feedback(query, message_id.lower(), False)
                 affected_count += 1
+                logger.debug("Feedback saved for message_id: %s", message_id)
             except Exception as e:
                 logger.error("Error saving feedback for message_id %s: %s", message_id, str(e))
         logger.info("Bulk feedback completed: %d emails affected in %s seconds", affected_count, (datetime.now() - start_time).total_seconds())
@@ -388,7 +380,7 @@ def submit_bulk_feedback(query, filter_data, processed_query, intent, terms, que
         logger.error("Error in bulk feedback: %s", str(e), exc_info=True)
         return 0
 
-def extract_components(explanation, verbose_explain=False):
+def extract_components(explanation):
     components = {
         'text': 0.0,
         'domain': 0.0,
@@ -396,16 +388,14 @@ def extract_components(explanation, verbose_explain=False):
         'temporal': 0.0,
         'text_details': []
     }
-  
+   
     def recurse(expl, path=""):
         nonlocal components
         if 'value' in expl and expl['value'] > 0:
             desc = expl.get('description', '')
             current_path = f"{path} -> {desc}"
-            # Reducido: Log solo si verbose_explain y DEBUG (evita spam de ES details como "Procesando: -> detail[0] -> ...")
-            if verbose_explain and logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Procesando: {current_path}, value={expl['value']}")
-          
+            logger.debug(f"Procesando: {current_path}, value={expl['value']}")
+           
             if 'weight' in desc:
                 match = re.search(r'weight\(([^:]+):([^ ]+) in \d+\)', desc)
                 if match:
@@ -417,46 +407,40 @@ def extract_components(explanation, verbose_explain=False):
                         'term': term,
                         'score': score
                     })
-                    if verbose_explain and logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(f"Texto detectado en {current_path}: field={field}, term={term}, score={score}")
-          
+                    logger.debug(f"Texto detectado en {current_path}: field={field}, term={term}, score={score}")
+           
             elif 'terms' in desc and 'semantic_domain' in desc:
                 components['domain'] += expl['value']
-                if verbose_explain and logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Dominio detectado en {current_path}: score={expl['value']}")
-          
+                logger.debug(f"Dominio detectado en {current_path}: score={expl['value']}")
+           
             elif 'script_score' in desc:
                 components['semantic'] += expl['value']
-                if verbose_explain and logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Semántico detectado en {current_path}: score={expl['value']}")
-          
+                logger.debug(f"Semántico detectado en {current_path}: score={expl['value']}")
+           
             elif 'range' in desc and 'date' in desc:
                 components['temporal'] += expl['value']
-                if verbose_explain and logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Temporal detectado en {current_path}: score={expl['value']}")
-          
+                logger.debug(f"Temporal detectado en {current_path}: score={expl['value']}")
+           
             for i, detail in enumerate(expl.get('details', [])):
                 recurse(detail, f"{current_path} -> detail[{i}]")
-  
+   
     recurse(explanation)
-    if verbose_explain and logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"Componentes extraídos: text={components['text']}, domain={components['domain']}, semantic={components['semantic']}, temporal={components['temporal']}")
+    logger.debug(f"Componentes extraídos: text={components['text']}, domain={components['domain']}, semantic={components['semantic']}, temporal={components['temporal']}")
     return components
 
 def build_explanation(total_score, components, email):
     explanation = f"La puntuación total de {total_score:.2f} del correo se compone de la suma de:\n"
     contributions = []
-  
+   
     original_sum = components['text'] + components['domain'] + components['semantic'] + components['temporal']
-  
+   
     if original_sum == 0:
         explanation += "- No se encontraron componentes específicos. La puntuación puede basarse en factores generales de la consulta.\n"
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Explicación construida: {explanation}")
+        logger.debug(f"Explicación construida: {explanation}")
         return explanation
-  
+   
     scaling_factor = total_score / original_sum if original_sum > 0 else 1.0
-  
+   
     if components['text'] > 0:
         text_score = components['text'] * scaling_factor
         terms_set = set(detail['term'] for detail in components['text_details'])
@@ -467,7 +451,7 @@ def build_explanation(total_score, components, email):
             if field not in field_scores:
                 field_scores[field] = 0.0
             field_scores[field] += score
-      
+       
         contributions.append(f"- {text_score:.2f} puntos de coincidencias de texto")
         sub_explanation = f" - Coincidencia de texto ({text_score:.2f} puntos), proveniente de términos como \"{', '.join(terms_set)}\" en:\n"
         for field, score in field_scores.items():
@@ -482,22 +466,21 @@ def build_explanation(total_score, components, email):
             else:
                 sub_explanation += f" - {field}: {score:.2f} puntos\n"
         contributions.append(sub_explanation)
-  
+   
     if components['domain'] > 0:
         domain_score = components['domain'] * scaling_factor
         contributions.append(f"- {domain_score:.2f} puntos del dominio semántico '{email['semantic_domain']}', que mide la relación del correo con un contexto temático específico")
-  
+   
     if components['semantic'] > 0:
         semantic_score = components['semantic'] * scaling_factor
         contributions.append(f"- {semantic_score:.2f} puntos de similitud semántica")
-  
+   
     if components['temporal'] > 0:
         temporal_score = components['temporal'] * scaling_factor
         contributions.append(f"- {temporal_score:.2f} puntos por proximidad temporal al rango especificado")
-  
+   
     explanation += '\n'.join(contributions) + '\n'
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"Explicación construida: {explanation}")
+    logger.debug(f"Explicación construida: {explanation}")
     return explanation
 
 def is_complex_query(processed_query, term_groups, intent, query_embedding):
@@ -512,7 +495,7 @@ def process_hits_light(hits, page, results_per_page, min_relevance=25):
     results = []
     scores = [hit['_score'] for hit in hits]
     mean_score = np.mean(scores) if scores else 0
-    for hit in hits:  # Loop: no per-hit log
+    for hit in hits:
         source = hit['_source']
         total_score = hit['_score']
         relevance = int(100 / (1 + np.exp(-0.5 * (total_score - mean_score))))
@@ -536,28 +519,18 @@ def process_hits_light(hits, page, results_per_page, min_relevance=25):
     start = (page - 1) * results_per_page
     return results[start:start + results_per_page]
 
-def search_emails(processed_query, intent, term_groups, query_embedding, min_relevance=25, page=1, results_per_page=25, filters=None, filter_only=False, user=None, get_all_ids=False, verbose_explain=False):
-    """
-    Función principal de búsqueda: Flujo end-to-end con logs trace.
-    Integra parse, ES retrieval, filtros, ranking, cache (aumentado sin reducir existing).
-    Nuevo param: verbose_explain (default False) para toggle logs en extract_components.
-    """
-    start_time = datetime.now()
-    logger.info("=== SEARCH FLOW START: Intent=%s, Term_groups=%s, Query_emb=%s, Min_rel=%s, Page=%s, Filters=%s, Filter_only=%s, User=%s, Get_all_ids=%s, Verbose_explain=%s ===", 
-                intent, term_groups, bool(query_embedding), min_relevance, page, filters, filter_only, user.username if user else 'None', get_all_ids, verbose_explain)  # Añadido verbose
-    
+def search_emails(processed_query, intent, term_groups, query_embedding, min_relevance=25, page=1, results_per_page=25, filters=None, filter_only=False, user=None, get_all_ids=False):
     logger.info("Buscando correos para intent: %s, term_groups: %s, min_relevance: %s, page: %s, filters: %s, filter_only: %s, user: %s, get_all_ids: %s",
                 intent, term_groups, min_relevance, page, filters, filter_only, user.username if user else 'None', get_all_ids)
     if not user:
         logger.error("Usuario no proporcionado para búsqueda de correos")
-        logger.info("=== SEARCH FLOW END: Error - No user, 0 results in %.2fs ===", (datetime.now() - start_time).total_seconds())  # Nuevo: End con error
         return {'results': [], 'totalResults': 0, 'filter_counts': {'remove': {}, 'add': {}}, 'all_email_ids': []}
     user_mailboxes = [mailbox['mailbox_id'] for mailbox in user.mailboxes]
     if not user_mailboxes:
         logger.warning(f"No se encontraron buzones para el usuario: {user.username}")
-        logger.info("=== SEARCH FLOW END: Warning - No mailboxes, 0 results in %.2fs ===", (datetime.now() - start_time).total_seconds())
         return {'results': [], 'totalResults': 0, 'filter_counts': {'remove': {}, 'add': {}}, 'all_email_ids': []}
     try:
+        start_time = datetime.now()
         feedback_weights = get_feedback_weights(user.username)
         logger.debug("Pesos de retroalimentación obtenidos en %s segundos", (datetime.now() - start_time).total_seconds())
         filters = filters or []
@@ -567,6 +540,7 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
             'remove': {','.join(f['terms']).lower(): 0 for f in remove_filters},
             'add': {','.join(f['terms']).lower(): 0 for f in add_filters}
         }
+
         # Ruta híbrida: Light para queries simples
         if not is_complex_query(processed_query, term_groups, intent, query_embedding) and not filter_only:
             logger.info("Usando modo light para query simple")
@@ -583,7 +557,7 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
                     }
                 },
                 "filter": [{"terms": {"mailbox_id": user_mailboxes}}],
-                "size": results_per_page * 5 # Pequeño para eficiencia
+                "size": results_per_page * 5  # Pequeño para eficiencia
             }
             # Añadir metadata filters
             metadata_filters = processed_query.get('metadata_filters', {})
@@ -620,16 +594,14 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
             # Ejecutar
             es_results = es.search(index='email_index', body=base_query_light)
             hits = es_results['hits']['hits']
-            logger.info(f"Retrieved %d raw hits from ES in light mode", len(hits))  # Nuevo: Retrieval flow
             # 3. Cribado Bayesian
             filtered_hits = []
-            for hit in hits:  # Loop: no per-hit log
+            for hit in hits:
                 msg_id = hit['_source']['message_id']
                 weight = feedback_weights.get(msg_id, 1.0)
-                if weight >= 0.5: # Threshold para cribado
+                if weight >= 0.5:  # Threshold para cribado
                     hit['_source']['bayesian_score'] = weight
                     filtered_hits.append(hit)
-            logger.info(f"Applied Bayesian filter: %d docs remaining post-feedback", len(filtered_hits))  # Nuevo: Post-filter flow
             # 4. Ordenar por score * bayesian
             filtered_hits.sort(key=lambda h: h['_score'] * h['_source'].get('bayesian_score', 1.0), reverse=True)
             paginated_results = process_hits_light(filtered_hits, page, results_per_page, min_relevance)
@@ -643,17 +615,17 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
                     count_query["query"]["bool"]["must"] = count_query["query"]["bool"]["must"] or []
                     count_query["query"]["bool"]["must"].append({"multi_match": {"query": term, "fields": ["subject", "body", "summary", "relevant_terms_array", "from", "to"]}})
                 if f['action'] == 'remove':
-                    count_query["query"]["bool"]["must_not"] = [{"match": {"_id": "dummy"}}] # Placeholder, adjust if needed
+                    count_query["query"]["bool"]["must_not"] = [{"match": {"_id": "dummy"}}]  # Placeholder, adjust if needed
                 count_result = es.count(index='email_index', body=count_query)
                 filter_counts[f['action']][terms_key] = count_result['count']
             logger.info(f"Modo light: %s resultados en %s segundos", len(paginated_results), (datetime.now() - start_time).total_seconds())
-            logger.info("=== SEARCH FLOW END (Light Mode): %d results, avg relevance N/A, in %.2fs ===", len(paginated_results), (datetime.now() - start_time).total_seconds())  # Nuevo: End light
             return {
                 'results': paginated_results,
                 'totalResults': total_filtered_results,
                 'filter_counts': filter_counts,
                 'all_email_ids': all_email_ids
             }
+
         # Modo full: Código original intacto
         logger.info("Usando modo full para query compleja")
         if query_embedding:
@@ -811,25 +783,22 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
         es_results = es.search(index='email_index', body=es_query)
         total_results = es_results['hits']['total']['value']
         es_hits = es_results['hits']['hits']
-        logger.info(f"Retrieved %d raw hits from ES in full mode (total: %d)", len(es_hits), total_results)  # Nuevo: Retrieval flow
         add_hits = []
         if add_filters:
             add_results = es.search(index='email_index', body=add_query)
             add_hits = add_results['hits']['hits']
-            logger.info(f"Retrieved %d additional hits from add filters", len(add_hits))
         # Combinar resultados eliminando duplicados
         combined_hits = es_hits + [hit for hit in add_hits if hit['_id'] not in {hit['_id'] for hit in es_hits}]
-        logger.info(f"Combined hits post-add: %d total raw docs", len(combined_hits))  # Nuevo: Post-combine
         # Procesar todos los resultados
         results = []
-        for hit in combined_hits:  # Loop: no per-hit log, aggregate in extract/build
+        for hit in combined_hits:
             explanation = hit['_explanation']
             total_score = hit['_score']
-            components = extract_components(explanation, verbose_explain=verbose_explain)  # Propagado param
+            components = extract_components(explanation)
             semantic_domain = hit['_source'].get('semantic_domain', 'desconocido')
-          
+           
             explanation_text = build_explanation(total_score, components, hit['_source'])
-          
+           
             results.append({
                 'message_id': hit['_source']['message_id'],
                 'index': hit['_source'].get('index', 'N/A'),
@@ -846,14 +815,13 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
         # Normalización sigmoide para relevancia
         scores = [email['total_score'] for email in results]
         mean_score = np.mean(scores) if scores else 0
-        for email in results:  # Loop: no per-email log
+        for email in results:
             relevance = int(100 / (1 + np.exp(-0.5 * (email['total_score'] - mean_score))))
             email['relevance'] = relevance
         # Filtrar y ordenar por relevancia
         min_score_threshold = 1.0
         ranked_results = [email for email in results if email['relevance'] >= min_relevance and email['total_score'] >= min_score_threshold]
         ranked_results.sort(key=lambda x: x['relevance'], reverse=True)
-        logger.info(f"Ranked results: %d docs post-relevance filter, avg relevance %.2f", len(ranked_results), np.mean([r['relevance'] for r in ranked_results]) if ranked_results else 0)  # Nuevo: Ranking flow
         # Generar all_email_ids a partir de ranked_results
         all_email_ids = [
             email['message_id'] if email['message_id'] != 'N/A' else email['index']
@@ -910,7 +878,6 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
             count_result = es.count(index='email_index', body=count_query)
             filter_counts['add'][terms_key] = count_result['count']
         logger.info(f"Devolviendo %s correos relevantes de %s totales en %s segundos", len(paginated_results), total_filtered_results, (datetime.now() - start_time).total_seconds())
-        logger.info("=== SEARCH FLOW END (Full Mode): %d results, avg relevance %.2f, in %.2fs ===", len(paginated_results), np.mean([r['relevance'] for r in paginated_results]) if paginated_results else 0, (datetime.now() - start_time).total_seconds())  # Nuevo: End full
         return {
             'results': paginated_results,
             'totalResults': total_filtered_results,
@@ -919,7 +886,6 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
         }
     except Exception as e:
         logger.error("Error al buscar correos: %s", str(e), exc_info=True)
-        logger.info("=== SEARCH FLOW END: Exception - 0 results in %.2fs ===", (datetime.now() - start_time).total_seconds())  # Nuevo: End exception
         return {'results': [], 'totalResults': 0, 'filter_counts': {'remove': {}, 'add': {}}, 'all_email_ids': []}
 
 def get_filter_emails(query_terms, filter, user, page=1, results_per_page=25):
@@ -967,20 +933,19 @@ def get_filter_emails(query_terms, filter, user, page=1, results_per_page=25):
         es_query["query"]["bool"]["minimum_should_match"] = 0
     try:
         start_time = datetime.now()
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Consulta para get_filter_emails: {json.dumps(es_query, indent=2)}")
+        logger.debug(f"Consulta para get_filter_emails: {json.dumps(es_query, indent=2)}")
         es_results = es.search(index='email_index', body=es_query)
-        logger.info(f"Filter search completed: %d hits in %.2fs", len(es_results['hits']['hits']), (datetime.now() - start_time).total_seconds())  # Aggregate
+        logger.debug(f"Búsqueda de correos para filtro completada en %s segundos", (datetime.now() - start_time).total_seconds())
         total_results = es_results['hits']['total']['value']
         hits = es_results['hits']['hits']
         results = []
-        for hit in hits:  # Loop: minimal log
+        for hit in hits:
             source = hit['_source']
             index_value = source.get('index', 'N/A')
             message_id = source.get('message_id', 'N/A')
-            if logger.isEnabledFor(logging.DEBUG) and message_id == 'N/A':
-                logger.warning(f"Correo sin message_id válido: index={index_value}")
+            logger.debug(f"Correo encontrado: index={index_value}, message_id={message_id}")
             if message_id == 'N/A':
+                logger.warning(f"Correo sin message_id válido: index={index_value}")
                 continue
             results.append({
                 'index': str(index_value),
@@ -992,7 +957,7 @@ def get_filter_emails(query_terms, filter, user, page=1, results_per_page=25):
                 'description': source.get('summary', 'Sin resumen'),
                 'relevant_terms': source.get('relevant_terms_array', [])
             })
-        logger.info(f"Devolviendo {len(results)} correos de un total de {total_results} para el filtro {action}")
+        logger.info(f"Devolviendo {len(results)} correos de un total de {total_results} para el filtro {action} en %s segundos", (datetime.now() - start_time).total_seconds())
         return {'results': results, 'totalResults': total_results}
     except Exception as e:
         logger.error(f"Error al obtener correos para filtro: {str(e)}", exc_info=True)

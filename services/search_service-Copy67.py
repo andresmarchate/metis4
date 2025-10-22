@@ -388,7 +388,7 @@ def submit_bulk_feedback(query, filter_data, processed_query, intent, terms, que
         logger.error("Error in bulk feedback: %s", str(e), exc_info=True)
         return 0
 
-def extract_components(explanation, verbose_explain=False):
+def extract_components(explanation):
     components = {
         'text': 0.0,
         'domain': 0.0,
@@ -402,8 +402,7 @@ def extract_components(explanation, verbose_explain=False):
         if 'value' in expl and expl['value'] > 0:
             desc = expl.get('description', '')
             current_path = f"{path} -> {desc}"
-            # Reducido: Log solo si verbose_explain y DEBUG (evita spam de ES details como "Procesando: -> detail[0] -> ...")
-            if verbose_explain and logger.isEnabledFor(logging.DEBUG):
+            if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Procesando: {current_path}, value={expl['value']}")
           
             if 'weight' in desc:
@@ -417,29 +416,29 @@ def extract_components(explanation, verbose_explain=False):
                         'term': term,
                         'score': score
                     })
-                    if verbose_explain and logger.isEnabledFor(logging.DEBUG):
+                    if logger.isEnabledFor(logging.DEBUG):
                         logger.debug(f"Texto detectado en {current_path}: field={field}, term={term}, score={score}")
           
             elif 'terms' in desc and 'semantic_domain' in desc:
                 components['domain'] += expl['value']
-                if verbose_explain and logger.isEnabledFor(logging.DEBUG):
+                if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Dominio detectado en {current_path}: score={expl['value']}")
           
             elif 'script_score' in desc:
                 components['semantic'] += expl['value']
-                if verbose_explain and logger.isEnabledFor(logging.DEBUG):
+                if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Semántico detectado en {current_path}: score={expl['value']}")
           
             elif 'range' in desc and 'date' in desc:
                 components['temporal'] += expl['value']
-                if verbose_explain and logger.isEnabledFor(logging.DEBUG):
+                if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Temporal detectado en {current_path}: score={expl['value']}")
           
             for i, detail in enumerate(expl.get('details', [])):
                 recurse(detail, f"{current_path} -> detail[{i}]")
   
     recurse(explanation)
-    if verbose_explain and logger.isEnabledFor(logging.DEBUG):
+    if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"Componentes extraídos: text={components['text']}, domain={components['domain']}, semantic={components['semantic']}, temporal={components['temporal']}")
     return components
 
@@ -536,15 +535,14 @@ def process_hits_light(hits, page, results_per_page, min_relevance=25):
     start = (page - 1) * results_per_page
     return results[start:start + results_per_page]
 
-def search_emails(processed_query, intent, term_groups, query_embedding, min_relevance=25, page=1, results_per_page=25, filters=None, filter_only=False, user=None, get_all_ids=False, verbose_explain=False):
+def search_emails(processed_query, intent, term_groups, query_embedding, min_relevance=25, page=1, results_per_page=25, filters=None, filter_only=False, user=None, get_all_ids=False):
     """
     Función principal de búsqueda: Flujo end-to-end con logs trace.
     Integra parse, ES retrieval, filtros, ranking, cache (aumentado sin reducir existing).
-    Nuevo param: verbose_explain (default False) para toggle logs en extract_components.
     """
     start_time = datetime.now()
-    logger.info("=== SEARCH FLOW START: Intent=%s, Term_groups=%s, Query_emb=%s, Min_rel=%s, Page=%s, Filters=%s, Filter_only=%s, User=%s, Get_all_ids=%s, Verbose_explain=%s ===", 
-                intent, term_groups, bool(query_embedding), min_relevance, page, filters, filter_only, user.username if user else 'None', get_all_ids, verbose_explain)  # Añadido verbose
+    logger.info("=== SEARCH FLOW START: Intent=%s, Term_groups=%s, Query_emb=%s, Min_rel=%s, Page=%s, Filters=%s, Filter_only=%s, User=%s, Get_all_ids=%s ===", 
+                intent, term_groups, bool(query_embedding), min_relevance, page, filters, filter_only, user.username if user else 'None', get_all_ids)  # Nuevo: Inicio flujo full context
     
     logger.info("Buscando correos para intent: %s, term_groups: %s, min_relevance: %s, page: %s, filters: %s, filter_only: %s, user: %s, get_all_ids: %s",
                 intent, term_groups, min_relevance, page, filters, filter_only, user.username if user else 'None', get_all_ids)
@@ -825,7 +823,7 @@ def search_emails(processed_query, intent, term_groups, query_embedding, min_rel
         for hit in combined_hits:  # Loop: no per-hit log, aggregate in extract/build
             explanation = hit['_explanation']
             total_score = hit['_score']
-            components = extract_components(explanation, verbose_explain=verbose_explain)  # Propagado param
+            components = extract_components(explanation)
             semantic_domain = hit['_source'].get('semantic_domain', 'desconocido')
           
             explanation_text = build_explanation(total_score, components, hit['_source'])
