@@ -1,0 +1,7 @@
+#!/bin/sh
+
+cd "/working/gdrive-local/Colab Notebooks/METIS-4.AI"
+
+export AYER=`date -d "yesterday" +"%Y-%m-%d"`
+
+python insert_emails.py manuel.perez.peña -date_start $AYER -mailbox manuelperezabogado@gmail.com

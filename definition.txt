@@ -1,0 +1,2385 @@
+ok, perfecto, a partir de esta base de datos quiero hacer un buscador basado en un backend en flask y python, el buscador debe tener una interfaz web servida directamente por el modulo en flask usando html5 y las librerias que consideres para tener un sistema facil de manejar y potente, que me permita realizar las siguientes operaciones: 1. hacer un analisis de una consulta de busqueda en lenguaje natural, con prompts del estilo "quiero conocer el estado del proyecto X" y  obtenga un listado de los correos relevantes para poder responder a dicha pregunta, o saber "que viajes puedo hacer por debajo de 100€" y obtener los correos con  ofertas de viaje (vuelos, trenes, hoteles, etc.) que cumplan esa condicion de precio, en fin poder hacer consultas de cualquier tipo y que el sistema identifique qué correos debe proporcionarme como relevantes. 2. el listado de correos devuelto debe ser un listado de correos del que debe proporcionarse en modo tabular: indice de la tabla de respuesta, id del correo, fecha, remitente, destinatario, asunto, breve descripcion del contenido correo, terminos relevantes que aparecen en la consulta, indice de relevancia entre 0 y 100 que indique un mayor nº si es más relevante sobre la consulta realizada y una breve  explicacion de por qué se ha seleccionado ese correo como relevante. El correo debe ser clickable en el id y entonces abrir una ventana modal donde nos enseña todo el contenido del correo: remitente, destinatario, fecha, asunto, cuerpo, etc. 3. para poder depurar el sistema debes proporcionarme tambien una herramienta de linea de comando que me permita lanzar la consulta del estilo python cli "dime que ofertas de viaje de menos de 100 euros hay en los correos". 4. las consultas al responder la tabla de correos relevantes deben permitir al usuario seleccionar y marcar como no validos los correos que no sean realmente relevantes y esta información debe ir generando un modelo de refuerzo para que el sistema NLP de las consultas mejores con el tiempo. Esta información debe hacerse persistente y usar un modelo de aprendizaje que pueda ayudar en futuras consultas. 5. Se debe usar cache de consultas donde sea posible para mejorar el rendimiento. 6. puedes usar redis, hugging face y los componentes que creas necesarios para este desarrollo siempre que se apoyen en el ecosistema mongo, python, ollama con el modelo mistral-custom cargado y corran sobre ubuntu. 7. debes proporcionarme el codigo de forma modular, es decir, si hay diversas funciones y urls de api de servicio en flask, debes fragmentar para cada parte sea sencilla revisar y mantener. por favor, dime primero la arquitectura, como funcionara todo y el listado de ficheros y luego te iré pidiendo progresivamente.
+
+Arquitectura del Buscador de Correos
+El sistema será una aplicación web basada en Flask con un backend en Python que interactúa con una base de datos MongoDB, un modelo de lenguaje local (mistral-custom a través de Ollama), y un sistema de caché con Redis. Incluirá una interfaz web en HTML5 con soporte para consultas en lenguaje natural, un listado tabular de correos relevantes, ventanas modales para ver detalles, retroalimentación de relevancia para aprendizaje de refuerzo, y una herramienta CLI para pruebas. El sistema se diseñará para ser modular, escalable y eficiente, corriendo en Ubuntu.
+Componentes Principales
+Backend (Flask + Python):
+Framework: Flask para servir la API REST y la interfaz web.
+
+Conexión a MongoDB: Usará pymongo para consultar la colección emails y recuperar correos basados en la consulta del usuario.
+
+Procesamiento de Lenguaje Natural (NLP): Utilizará el modelo mistral-custom a través de la API de Ollama para analizar consultas en lenguaje natural, identificar intenciones y extraer términos relevantes. También aprovechará los embeddings almacenados en MongoDB para búsquedas semánticas.
+
+Caché: Redis para almacenar resultados de consultas frecuentes, mejorando el rendimiento.
+
+Aprendizaje de Refuerzo: Un modelo simple basado en retroalimentación del usuario (correos marcados como no relevantes) se almacenará en MongoDB y se usará para ajustar los pesos de relevancia en futuras consultas.
+
+CLI: Una herramienta de línea de comandos para ejecutar consultas en lenguaje natural y depurar el sistema.
+
+Frontend (HTML5 + JavaScript):
+Interfaz Web: Una página HTML5 con Bootstrap para un diseño responsivo y DataTables para mostrar el listado tabular de correos. Usará JavaScript (con jQuery) para manejar interacciones dinámicas, como abrir modales con detalles de correos.
+
+Modal: Una ventana modal de Bootstrap mostrará el contenido completo de un correo al hacer clic en su ID.
+
+Formulario de Consulta: Un campo de texto para consultas en lenguaje natural, con un botón para enviar la consulta y otro para marcar correos como no relevantes.
+
+Aprendizaje de Refuerzo:
+Se almacenarán las retroalimentaciones del usuario (correos marcados como no relevantes) en una colección MongoDB separada (feedback).
+
+Un modelo ligero basado en un sistema de pesos ajustará la relevancia de los correos en función de la retroalimentación, usando un enfoque simple de aprendizaje supervisado con scikit-learn.
+
+Dependencias:
+Python: Flask, pymongo, redis-py, sentence-transformers, requests, scikit-learn.
+
+MongoDB: Almacena los correos y retroalimentación.
+
+Redis: Caché de consultas.
+
+Ollama: Ejecuta el modelo mistral-custom para análisis de consultas.
+
+Frontend: Bootstrap, jQuery, DataTables.
+
+Ubuntu: Sistema operativo base, con Tesseract instalado para compatibilidad con el script original.
+
+Flujo de Funcionamiento
+Consulta del Usuario:
+El usuario ingresa una consulta en lenguaje natural (e.g., "quiero conocer el estado del proyecto X" o "viajes por menos de 100€") a través de la interfaz web o CLI.
+
+La consulta se envía al backend Flask, que verifica si está en caché (Redis). Si no, se procesa con mistral-custom para:
+Identificar la intención (e.g., "estado de proyecto", "ofertas de viaje").
+
+Extraer términos relevantes y condiciones (e.g., "proyecto X", "precio < 100€").
+
+Generar un embedding de la consulta usando sentence-transformers.
+
+Búsqueda de Correos:
+Se realiza una búsqueda en MongoDB combinando:
+Búsqueda textual: Usando el índice text_index para coincidir con términos en subject, body, attachments_content, etc.
+
+Búsqueda semántica: Comparando el embedding de la consulta con los embeddings almacenados en los documentos (embedding) mediante similitud de coseno.
+
+Filtros específicos: Para consultas con condiciones (e.g., precio < 100€), se aplican expresiones regulares o filtros en body y attachments_content.
+
+Los resultados se ponderan con un índice de relevancia (0-100) basado en la similitud semántica, coincidencias textuales y retroalimentación previa.
+
+Presentación de Resultados:
+Los correos relevantes se muestran en una tabla HTML con columnas: índice, ID del correo, fecha, remitente, destinatario, asunto, descripción breve, términos relevantes, índice de relevancia, y explicación de relevancia.
+
+El ID del correo es un enlace que abre un modal con el contenido completo (from, to, subject, date, body, attachments_content).
+
+Cada fila incluye un botón para marcar el correo como no relevante.
+
+Retroalimentación y Aprendizaje:
+Al marcar un correo como no relevante, se almacena en la colección feedback con la consulta, el message_id, y un peso negativo.
+
+Un modelo de aprendizaje (basado en scikit-learn) ajusta los pesos de relevancia para futuras consultas, penalizando correos similares a los marcados como no relevantes.
+
+CLI:
+La herramienta CLI (python cli.py "consulta") envía la consulta al backend, imprime los resultados en formato tabular en la consola, y permite pruebas rápidas sin la interfaz web.
+
+Caché:
+Las consultas y sus resultados se almacenan en Redis con un TTL (e.g., 1 hora) para evitar reprocesar consultas frecuentes.
+
+La clave del caché es un hash MD5 de la consulta normalizada.
+
+Listado de Ficheros
+El proyecto se organizará en módulos para facilitar el mantenimiento. Los ficheros principales son:
+app.py: Punto de entrada de la aplicación Flask. Define las rutas de la API y sirve la interfaz web.
+
+config.py: Configuraciones globales (MongoDB, Redis, Ollama, etc.).
+
+services/nlp_service.py: Lógica para procesar consultas en lenguaje natural con mistral-custom y generar embeddings.
+
+services/search_service.py: Lógica para buscar correos en MongoDB (textual y semántica) y calcular relevancia.
+
+services/feedback_service.py: Gestión de retroalimentación y modelo de aprendizaje de refuerzo.
+
+services/cache_service.py: Gestión de caché con Redis.
+
+cli.py: Herramienta de línea de comandos para ejecutar consultas.
+
+templates/index.html: Plantilla HTML para la interfaz web (formulario, tabla, modal).
+
+static/css/style.css: Estilos personalizados para la interfaz.
+
+static/js/main.js: JavaScript para interacciones dinámicas (DataTables, modales, retroalimentación).
+
+requirements.txt: Dependencias de Python.
+
+docker-compose.yml: (Opcional) Para configurar MongoDB, Redis, y Ollama en contenedores.
+
+Dependencias
+plaintext
+
+# requirements.txt
+flask==3.0.3
+pymongo==4.10.1
+redis==5.0.8
+sentence-transformers==3.1.1
+requests==2.32.3
+scikit-learn==1.5.2
+numpy==1.26.4
+python-dotenv==1.0.1
+
+Instalación en Ubuntu
+Prerrequisitos:
+Instalar MongoDB, Redis, y Ollama (con mistral-custom cargado).
+
+Instalar Tesseract: sudo apt-get install tesseract-ocr.
+
+Instalar Python 3.10+: sudo apt-get install python3 python3-pip.
+
+Instalar dependencias: pip install -r requirements.txt.
+
+Configuración:
+Crear un archivo .env con variables como MONGO_URI, REDIS_HOST, OLLAMA_URL.
+
+Asegurar que MongoDB y Redis estén corriendo: sudo systemctl start mongod redis.
+
+Iniciar Ollama: ollama serve.
+
+Ejecutar la Aplicación:
+python app.py para iniciar el servidor Flask (por defecto en http://localhost:5000).
+
+python cli.py "consulta" para pruebas desde la CLI.
+
+Próximos Pasos
+Por favor, indícame qué parte del código deseas que desarrolle primero (e.g., app.py, nlp_service.py, index.html, etc.), y proporcionaré el código modular correspondiente. También puedo detallar más algún aspecto de la arquitectura si necesitas aclaraciones.
+
+A continuación, te proporciono los dos primeros ficheros de la arquitectura propuesta: app.py y config.py. Estos ficheros establecen la base del servidor Flask y la configuración global del sistema. Los he diseñado para ser modulares, fáciles de mantener y compatibles con los requisitos especificados. Cada archivo incluye comentarios claros para explicar su propósito y funcionalidad.
+1. app.py
+Este archivo es el punto de entrada de la aplicación Flask. Define las rutas de la API REST, sirve la interfaz web y coordina las interacciones entre los servicios (NLP, búsqueda, caché, retroalimentación). Utiliza los servicios definidos en otros módulos (que se implementarán más adelante) para procesar consultas, mostrar resultados y manejar retroalimentación.
+python
+
+from flask import Flask, request, render_template, jsonify
+from services.nlp_service import process_query
+from services.search_service import search_emails
+from services.feedback_service import save_feedback, train_relevance_model
+from services.cache_service import get_cached_result, cache_result
+import hashlib
+import json
+
+app = Flask(__name__)
+
+# Ruta para la página principal (interfaz web)
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# Ruta para procesar consultas de búsqueda
+@app.route('/api/search', methods=['POST'])
+def search():
+    try:
+        data = request.get_json()
+        query = data.get('query', '').strip()
+        if not query:
+            return jsonify({'error': 'Consulta vacía'}), 400
+
+        # Generar hash de la consulta para caché
+        query_hash = hashlib.md5(query.encode('utf-8')).hexdigest()
+
+        # Verificar caché
+        cached_result = get_cached_result(query_hash)
+        if cached_result:
+            return jsonify(cached_result)
+
+        # Procesar consulta con NLP
+        processed_query = process_query(query)
+        intent = processed_query.get('intent', 'general')
+        terms = processed_query.get('terms', [])
+        embedding = processed_query.get('embedding', None)
+
+        # Buscar correos relevantes
+        results = search_emails(query, intent, terms, embedding)
+
+        # Almacenar en caché
+        cache_result(query_hash, results)
+
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': f'Error al procesar la consulta: {str(e)}'}), 500
+
+# Ruta para obtener detalles de un correo por message_id
+@app.route('/api/email/<message_id>', methods=['GET'])
+def get_email(message_id):
+    try:
+        from services.search_service import get_email_by_id
+        email = get_email_by_id(message_id)
+        if not email:
+            return jsonify({'error': 'Correo no encontrado'}), 404
+        return jsonify(email)
+    except Exception as e:
+        return jsonify({'error': f'Error al obtener el correo: {str(e)}'}), 500
+
+# Ruta para guardar retroalimentación (marcar correo como no relevante)
+@app.route('/api/feedback', methods=['POST'])
+def feedback():
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        message_id = data.get('message_id', '')
+        is_relevant = data.get('is_relevant', False)
+
+        if not query or not message_id:
+            return jsonify({'error': 'Faltan query o message_id'}), 400
+
+        # Guardar retroalimentación
+        save_feedback(query, message_id, is_relevant)
+
+        # Reentrenar modelo de relevancia
+        train_relevance_model()
+
+        return jsonify({'message': 'Retroalimentación guardada'})
+    except Exception as e:
+        return jsonify({'error': f'Error al guardar retroalimentación: {str(e)}'}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+Explicación de app.py:
+Ruta /: Sirve la página principal (index.html) con el formulario de búsqueda y la tabla de resultados.
+
+Ruta /api/search: Procesa consultas en lenguaje natural, verifica el caché, utiliza los servicios NLP y de búsqueda para obtener correos relevantes y almacena los resultados en caché.
+
+Ruta /api/email/<message_id>: Devuelve los detalles completos de un correo para mostrar en el modal.
+
+Ruta /api/feedback: Almacena la retroalimentación del usuario y reentrena el modelo de relevancia.
+
+Ejecución: Corre en localhost:5000 con modo debug activado para desarrollo.
+
+2. config.py
+Este archivo contiene las configuraciones globales del sistema, como las conexiones a MongoDB, Redis, y Ollama, así como parámetros para el modelo de embeddings y el caché. Utiliza variables de entorno para mayor seguridad.
+
+El archivo usa variables de entorno para mantener la seguridad y flexibilidad, y está diseñado para ser claro y modular.
+config.py
+python
+
+import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde un archivo .env
+load_dotenv()
+
+# Configuración de MongoDB
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
+MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'email_database_metis2')
+MONGO_EMAILS_COLLECTION = 'emails'
+MONGO_FEEDBACK_COLLECTION = 'feedback'
+
+# Configuración de Redis (para caché)
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+REDIS_DB = int(os.getenv('REDIS_DB', 0))
+CACHE_TTL = int(os.getenv('CACHE_TTL', 3600))  # Tiempo de vida del caché en segundos (1 hora)
+
+# Configuración de Ollama (para el modelo mistral-custom)
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434/api/generate')
+OLLAMA_MODEL = 'mistral-custom'
+OLLAMA_TEMPERATURE = float(os.getenv('OLLAMA_TEMPERATURE', 0.7))
+OLLAMA_MAX_TOKENS = int(os.getenv('OLLAMA_MAX_TOKENS', 512))
+OLLAMA_CONTEXT_SIZE = int(os.getenv('OLLAMA_CONTEXT_SIZE', 32768))
+
+# Configuración del modelo de embeddings
+EMBEDDING_MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
+
+# Configuración del modelo de aprendizaje de refuerzo
+FEEDBACK_MODEL_PATH = os.getenv('FEEDBACK_MODEL_PATH', './models/feedback_model.pkl')
+FEEDBACK_MIN_SAMPLES = int(os.getenv('FEEDBACK_MIN_SAMPLES', 10))  # Mínimo de muestras para reentrenar
+
+# Configuración de Flask
+FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY', 'your-secret-key')  # Cambiar en producción
+FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'True') == 'True'
+
+# Directorio para archivos estáticos y plantillas
+STATIC_DIR = 'static'
+TEMPLATES_DIR = 'templates'
+
+# Configuración de índices de MongoDB (para referencia, no se crean aquí)
+INDEXES = {
+    'text_index': [
+        ('from', 'text'),
+        ('to', 'text'),
+        ('subject', 'text'),
+        ('body', 'text'),
+        ('headers_text', 'text'),
+        ('attachments', 'text'),
+        ('attachments_content', 'text'),
+        ('summary', 'text'),
+        ('relevant_terms', 'text'),
+        ('semantic_domain', 'text')
+    ],
+    'date_index': [('date', 1)],
+    'message_id_1': [('message_id', 1)],
+    'common_filters_index': [
+        ('from', 1),
+        ('to', 1),
+        ('date', 1),
+        ('semantic_domain', 1)
+    ]
+}
+
+Explicación de config.py:
+Variables de entorno: Usa python-dotenv para cargar configuraciones desde un archivo .env, permitiendo personalizar parámetros como conexiones a bases de datos o puertos sin modificar el código.
+
+MongoDB: Define la URI, nombre de la base de datos (email_database_metis2), y nombres de colecciones (emails y feedback).
+
+Redis: Configura el host, puerto, base de datos, y tiempo de vida del caché (1 hora por defecto).
+
+Ollama: Especifica la URL de la API, el modelo (mistral-custom), y parámetros como temperatura y tamaño máximo de tokens.
+
+Embeddings: Usa el modelo paraphrase-multilingual-MiniLM-L12-v2 para generar embeddings, consistente con el script original.
+
+Aprendizaje de refuerzo: Define la ruta para guardar el modelo de retroalimentación y el número mínimo de muestras para reentrenar.
+
+Flask: Incluye la clave secreta y el modo debug.
+
+Índices: Lista los índices de MongoDB para referencia (ya creados por el script original).
+
+Directorios: Define las rutas para archivos estáticos y plantillas.
+
+Archivo .env (Ejemplo)
+Para que config.py funcione correctamente, crea un archivo .env en el directorio raíz del proyecto con el siguiente contenido (ajusta según tu entorno):
+env
+
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB_NAME=email_database_metis2
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+CACHE_TTL=3600
+OLLAMA_URL=http://localhost:11434/api/generate
+OLLAMA_MODEL=mistral-custom
+OLLAMA_TEMPERATURE=0.7
+OLLAMA_MAX_TOKENS=512
+OLLAMA_CONTEXT_SIZE=32768
+FLASK_SECRET_KEY=your-secret-key
+FLASK_DEBUG=True
+FEEDBACK_MODEL_PATH=./models/feedback_model.pkl
+FEEDBACK_MIN_SAMPLES=10
+
+Notas
+Asegúrate de instalar python-dotenv (pip install python-dotenv) para cargar las variables de entorno.
+
+Cambia FLASK_SECRET_KEY por un valor seguro en producción.
+
+Crea el directorio models/ si planeas almacenar el modelo de retroalimentación (mkdir models).
+
+Próximos Pasos
+Ahora que tienes app.py y config.py, ¿cuál de los siguientes ficheros deseas que desarrolle a continuación? Aquí están algunas opciones sugeridas:
+services/nlp_service.py: Para procesar consultas en lenguaje natural con mistral-custom y generar embeddings.
+
+services/search_service.py: Para realizar búsquedas en MongoDB (textual y semántica).
+
+templates/index.html: Para la interfaz web con formulario, tabla y modal.
+
+cli.py: Para la herramienta de línea de comandos.
+
+dame nlp_service.py y search_service.py
+
+A continuación, te proporciono los archivos services/nlp_service.py y services/search_service.py, que implementan la lógica para procesar consultas en lenguaje natural y realizar búsquedas en la base de datos MongoDB, respectivamente. Ambos archivos son modulares, están diseñados para integrarse con la arquitectura propuesta, y utilizan las configuraciones definidas en config.py. Incluyen manejo de caché, embeddings, y procesamiento con el modelo mistral-custom a través de Ollama.
+1. services/nlp_service.py
+Este archivo contiene la lógica para procesar consultas en lenguaje natural utilizando el modelo mistral-custom (via Ollama) y generar embeddings para búsquedas semánticas. Analiza la consulta del usuario para identificar la intención, extraer términos relevantes y generar un embedding compatible con los almacenados en la base de datos.
+python
+
+import hashlib
+import json
+import re
+import requests
+import zlib
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_TEMPERATURE, OLLAMA_MAX_TOKENS, OLLAMA_CONTEXT_SIZE, EMBEDDING_MODEL_NAME
+
+# Cargar el modelo de embeddings
+embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+# Caché en memoria para respuestas de Ollama
+response_cache = {}
+CACHE_LIMIT = 1000
+
+def call_ollama_api(prompt):
+    """Llama a la API de Ollama para procesar el prompt."""
+    prompt_hash = hashlib.md5(prompt.encode('utf-8')).hexdigest()
+    
+    # Verificar caché
+    if prompt_hash in response_cache:
+        return response_cache[prompt_hash]
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "temperature": OLLAMA_TEMPERATURE,
+        "num_predict": OLLAMA_MAX_TOKENS,
+        "num_ctx": OLLAMA_CONTEXT_SIZE
+    }
+
+    try:
+        response = requests.post(OLLAMA_URL, json=payload)
+        response.raise_for_status()
+        result = response.json()['response']
+        
+        # Almacenar en caché
+        if len(response_cache) >= CACHE_LIMIT:
+            response_cache.pop(list(response_cache.keys())[0])
+        response_cache[prompt_hash] = result
+        return result
+    except requests.RequestException as e:
+        print(f"Error al contactar con Ollama: {e}")
+        return f"Error: {str(e)}"
+
+def generate_embedding(text):
+    """Genera un embedding comprimido para el texto proporcionado."""
+    if not text:
+        return None
+    try:
+        embedding = embedding_model.encode(text).tolist()
+        compressed_embedding = zlib.compress(np.array(embedding, dtype=np.float32).tobytes())
+        return compressed_embedding
+    except Exception as e:
+        print(f"Error al generar embedding: {e}")
+        return None
+
+def process_query(query):
+    """
+    Procesa una consulta en lenguaje natural y devuelve la intención, términos relevantes y embedding.
+    """
+    # Normalizar consulta
+    query = query.lower().strip()
+    if not query:
+        return {"intent": "general", "terms": [], "embedding": None}
+
+    # Prompt para analizar la consulta
+    prompt = f"""
+    Analiza la siguiente consulta en lenguaje natural y devuelve EXCLUSIVAMENTE un objeto JSON con:
+    - "intent": La intención principal de la consulta (ejemplo: "estado_proyecto", "ofertas_viaje", "general").
+    - "terms": Lista de términos relevantes (palabras clave, nombres propios, conceptos).
+    - "conditions": Diccionario con condiciones específicas (ejemplo: {"precio_max": "100€"}).
+    
+    **Instrucciones**:
+    1. Identifica la intención principal basándote en el propósito de la consulta.
+    2. Extrae términos relevantes (nombres propios, palabras clave, conceptos específicos).
+    3. Detecta condiciones explícitas (como precios, fechas, cantidades) y devuélvelas en "conditions".
+    4. Devuelve solo un objeto JSON válido, sin comentarios ni texto adicional.
+    5. Ejemplo:
+    {{
+        "intent": "ofertas_viaje",
+        "terms": ["viaje", "vuelo", "hotel"],
+        "conditions": {{"precio_max": "100€"}}
+    }}
+
+    Consulta:
+    {query}
+    """
+
+    response = call_ollama_api(prompt)
+    try:
+        # Limpiar respuesta de Ollama
+        cleaned_response = response.strip()
+        if cleaned_response.startswith('```json'):
+            cleaned_response = cleaned_response[7:].strip()
+        if cleaned_response.endswith('```'):
+            cleaned_response = cleaned_response[:-3].strip()
+        result = json.loads(cleaned_response)
+        
+        # Validar y corregir resultado
+        intent = result.get('intent', 'general')
+        terms = result.get('terms', [])
+        conditions = result.get('conditions', {})
+        
+        # Generar embedding de la consulta
+        embedding = generate_embedding(query)
+        
+        return {
+            "intent": intent,
+            "terms": terms,
+            "conditions": conditions,
+            "embedding": embedding
+        }
+    except json.JSONDecodeError as e:
+        print(f"Error al parsear respuesta de Ollama: {e}")
+        return {
+            "intent": "general",
+            "terms": re.findall(r'\b\w+\b', query),
+            "conditions": {},
+            "embedding": generate_embedding(query)
+        }
+    except Exception as e:
+        print(f"Error al procesar consulta: {e}")
+        return {"intent": "general", "terms": [], "conditions": {}, "embedding": None}
+
+Explicación de nlp_service.py:
+Función call_ollama_api: Llama a la API de Ollama para procesar prompts con el modelo mistral-custom. Usa un caché en memoria para evitar consultas repetitivas.
+
+Función generate_embedding: Genera un embedding comprimido (usando zlib) con el modelo paraphrase-multilingual-MiniLM-L12-v2, consistente con el script original.
+
+Función process_query: Analiza la consulta en lenguaje natural, identifica la intención (e.g., "ofertas_viaje"), extrae términos relevantes y detecta condiciones (e.g., "precio_max: 100€"). Devuelve un diccionario con la intención, términos, condiciones y embedding.
+
+Manejo de errores: Incluye manejo robusto de errores para fallos en la API o en el parseo JSON, devolviendo valores por defecto.
+
+2. services/search_service.py
+Este archivo implementa la lógica para buscar correos en MongoDB, combinando búsqueda textual y semántica. Calcula un índice de relevancia para cada correo y formatea los resultados según los requisitos (índice, ID, fecha, remitente, destinatario, asunto, descripción, términos relevantes, relevancia, explicación).
+python
+
+import zlib
+import numpy as np
+from pymongo import MongoClient
+from config import MONGO_URI, MONGO_DB_NAME, MONGO_EMAILS_COLLECTION
+from sentence_transformers import SentenceTransformer, util
+from services.feedback_service import get_feedback_weights
+
+# Conectar a MongoDB
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+emails_collection = db[MONGO_EMAILS_COLLECTION]
+
+# Cargar modelo de embeddings
+embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+
+def cosine_similarity(emb1, emb2):
+    """Calcula la similitud de coseno entre dos embeddings comprimidos."""
+    if emb1 is None or emb2 is None:
+        return 0.0
+    try:
+        # Descomprimir embeddings
+        emb1_array = np.frombuffer(zlib.decompress(emb1), dtype=np.float32)
+        emb2_array = np.frombuffer(zlib.decompress(emb2), dtype=np.float32)
+        return util.cos_sim(emb1_array, emb2_array).item()
+    except Exception as e:
+        print(f"Error al calcular similitud de coseno: {e}")
+        return 0.0
+
+def get_email_by_id(message_id):
+    """Obtiene un correo por su message_id."""
+    email = emails_collection.find_one(
+        {'message_id': message_id},
+        {
+            'from': 1, 'to': 1, 'subject': 1, 'date': 1, 'body': 1,
+            'attachments': 1, 'attachments_content': 1, 'summary': 1,
+            'relevant_terms': 1, 'semantic_domain': 1, 'urls': 1, '_id': 0
+        }
+    )
+    return email
+
+def search_emails(query, intent, terms, query_embedding):
+    """
+    Busca correos relevantes en MongoDB usando búsqueda textual y semántica.
+    """
+    try:
+        # Obtener pesos de retroalimentación
+        feedback_weights = get_feedback_weights()
+
+        # Búsqueda textual
+        text_query = {
+            '$text': {
+                '$search': ' '.join(terms + [intent]),
+                '$language': 'spanish'
+            }
+        }
+        
+        # Filtros por condiciones específicas (e.g., precio < 100€)
+        conditions = {}
+        if intent == 'ofertas_viaje':
+            conditions['semantic_domain'] = 'viajes'
+            if 'precio_max' in query.get('conditions', {}):
+                precio_max = query.get('conditions').get('precio_max', '')
+                if precio_max:
+                    precio_regex = r'\b\d+\s*(?:€|euros)\b'
+                    conditions['$or'] = [
+                        {'body': {'$regex': precio_regex}},
+                        {'attachments_content': {'$regex': precio_regex}}
+                    ]
+
+        # Consulta inicial
+        pipeline = [
+            {'$match': {**text_query, **conditions}},
+            {'$sort': {'score': {'$meta': 'textScore'}}},
+            {'$limit': 50}  # Limitar a 50 resultados iniciales
+        ]
+
+        results = list(emails_collection.aggregate(pipeline))
+        
+        # Calcular relevancia combinando búsqueda textual y semántica
+        ranked_results = []
+        for idx, email in enumerate(results, 1):
+            # Similitud semántica
+            semantic_score = cosine_similarity(query_embedding, email.get('embedding'))
+            
+            # Puntuación textual
+            text_score = email.get('score', 0) if '$meta' in email else 0
+            
+            # Ajuste por retroalimentación
+            feedback_weight = feedback_weights.get(email['message_id'], 1.0)
+            
+            # Relevancia combinada (0-100)
+            relevance = min(100, int((0.6 * semantic_score + 0.3 * text_score + 0.1 * feedback_weight) * 100))
+            
+            # Términos relevantes coincidentes
+            email_terms = [term for term in email.get('relevant_terms', {}).keys() if term in terms]
+            
+            # Explicación de relevancia
+            explanation = f"Seleccionado por: "
+            if semantic_score > 0.5:
+                explanation += f"alta similitud semántica ({int(semantic_score * 100)}%), "
+            if text_score > 0:
+                explanation += f"coincidencia textual con {', '.join(email_terms)}, "
+            if email['semantic_domain'] == intent:
+                explanation += f"dominio semántico '{intent}', "
+            if feedback_weight < 1.0:
+                explanation += f"ajustado por retroalimentación negativa, "
+            explanation = explanation.rstrip(", ")
+            
+            ranked_results.append({
+                'index': idx,
+                'message_id': email['message_id'],
+                'date': email['date'],
+                'from': email['from'],
+                'to': email['to'],
+                'subject': email['subject'],
+                'description': email.get('summary', 'Sin resumen'),
+                'relevant_terms': email_terms,
+                'relevance': relevance,
+                'explanation': explanation
+            })
+        
+        # Ordenar por relevancia descendente
+        ranked_results.sort(key=lambda x: x['relevance'], reverse=True)
+        return ranked_results[:10]  # Devolver los 10 más relevantes
+    except Exception as e:
+        print(f"Error al buscar correos: {e}")
+        return []
+
+Explicación de search_service.py:
+Función cosine_similarity: Calcula la similitud de coseno entre embeddings comprimidos, descomprimiéndolos primero con zlib.
+
+Función get_email_by_id: Recupera un correo por su message_id para mostrar en el modal, excluyendo el campo _id.
+
+Función search_emails: Realiza una búsqueda combinada:
+Textual: Usa el índice text_index de MongoDB con los términos extraídos y la intención.
+
+Semántica: Compara el embedding de la consulta con los embeddings de los correos.
+
+Condiciones: Aplica filtros específicos (e.g., precios para "ofertas_viaje") usando expresiones regulares.
+
+Calcula un índice de relevancia (0-100) combinando similitud semántica (60%), puntuación textual (30%), y ajuste por retroalimentación (10%).
+
+Devuelve una lista de hasta 10 correos con los campos requeridos (índice, ID, fecha, remitente, destinatario, asunto, descripción, términos relevantes, relevancia, explicación).
+
+Manejo de errores: Devuelve una lista vacía si ocurre un error, con mensajes en consola para depuración.
+
+Notas de Implementación
+Dependencias: Asegúrate de tener instaladas las dependencias mencionadas en requirements.txt:
+plaintext
+
+flask==3.0.3
+pymongo==4.10.1
+redis==5.0.8
+sentence-transformers==3.1.1
+requests==2.32.3
+python-dotenv==1.0.1
+
+Estructura de Directorios: Coloca estos archivos en el directorio services/:
+bash
+
+mkdir -p services
+touch services/nlp_service.py services/search_service.py
+
+Servicios Externos: MongoDB, Redis, y Ollama deben estar corriendo. Verifica con:
+bash
+
+sudo systemctl status mongod redis
+ollama serve
+
+Feedback Service: La función get_feedback_weights está referenciada pero no implementada aún. Si deseas, puedo proporcionar feedback_service.py a continuación.
+
+Próximos Pasos
+Por favor, indícame qué archivo o componente deseas que desarrolle a continuación. Opciones sugeridas:
+services/feedback_service.py: Para manejar retroalimentación y aprendizaje de refuerzo.
+
+services/cache_service.py: Para gestionar el caché con Redis.
+
+templates/index.html: Para la interfaz web con formulario, tabla y modal.
+
+static/js/main.js: Para la lógica del frontend (DataTables, modales, retroalimentación).
+
+cli.py: Para la herramienta de línea de comandos.
+
+También puedo ajustar cualquier detalle en nlp_service.py o search_service.py si necesitas cambios. ¿Qué prefieres?
+
+A continuación, te proporciono los archivos pendientes para completar la arquitectura del buscador de correos: services/feedback_service.py, services/cache_service.py, templates/index.html, static/js/main.js, static/css/style.css, y cli.py. Estos archivos implementan la gestión de retroalimentación, caché, interfaz web, lógica del frontend, estilos, y la herramienta CLI, respectivamente. Cada archivo está diseñado para ser modular, compatible con los requisitos especificados, y se integra con los archivos previos (app.py, config.py, nlp_service.py, search_service.py).
+1. services/feedback_service.py
+Este archivo maneja la retroalimentación del usuario (correos marcados como no relevantes) y entrena un modelo simple de aprendizaje de refuerzo para ajustar la relevancia de los correos en futuras consultas. Usa scikit-learn para un modelo ligero basado en pesos.
+python
+
+import os
+import pickle
+from pymongo import MongoClient
+from config import MONGO_URI, MONGO_DB_NAME, MONGO_FEEDBACK_COLLECTION, FEEDBACK_MODEL_PATH, FEEDBACK_MIN_SAMPLES
+from services.search_service import get_email_by_id
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+# Conectar a MongoDB
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+feedback_collection = db[MONGO_FEEDBACK_COLLECTION]
+
+# Cargar modelo de embeddings
+embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+
+# Cargar o inicializar modelo de relevancia
+def load_relevance_model():
+    if os.path.exists(FEEDBACK_MODEL_PATH):
+        with open(FEEDBACK_MODEL_PATH, 'rb') as f:
+            return pickle.load(f)
+    return {}  # Diccionario de pesos: {message_id: peso}
+
+def save_relevance_model(model):
+    os.makedirs(os.path.dirname(FEEDBACK_MODEL_PATH), exist_ok=True)
+    with open(FEEDBACK_MODEL_PATH, 'wb') as f:
+        pickle.dump(model, f)
+
+def save_feedback(query, message_id, is_relevant):
+    """Guarda la retroalimentación del usuario en MongoDB."""
+    try:
+        feedback = {
+            'query': query,
+            'message_id': message_id,
+            'is_relevant': is_relevant,
+            'timestamp': {'$date': '2025-06-02T19:33:00Z'}  # Usar la fecha actual del sistema
+        }
+        feedback_collection.insert_one(feedback)
+        print(f"Retroalimentación guardada: query={query}, message_id={message_id}, is_relevant={is_relevant}")
+    except Exception as e:
+        print(f"Error al guardar retroalimentación: {e}")
+
+def get_feedback_weights():
+    """Obtiene pesos de relevancia basados en retroalimentación."""
+    model = load_relevance_model()
+    return model
+
+def train_relevance_model():
+    """Entrena un modelo de relevancia basado en retroalimentación."""
+    try:
+        # Contar retroalimentaciones
+        feedback_count = feedback_collection.count_documents({})
+        if feedback_count < FEEDBACK_MIN_SAMPLES:
+            print(f"No hay suficientes retroalimentaciones ({feedback_count}/{FEEDBACK_MIN_SAMPLES})")
+            return
+
+        # Cargar retroalimentaciones
+        feedbacks = feedback_collection.find()
+        model = {}
+
+        for feedback in feedbacks:
+            message_id = feedback['message_id']
+            is_relevant = feedback['is_relevant']
+            
+            # Obtener el correo para extraer características
+            email = get_email_by_id(message_id)
+            if not email:
+                continue
+
+            # Asignar peso: 1.0 por defecto, 0.5 si no es relevante
+            weight = 0.5 if not is_relevant else 1.0
+            model[message_id] = weight
+
+        # Guardar modelo
+        save_relevance_model(model)
+        print("Modelo de relevancia reentrenado")
+    except Exception as e:
+        print(f"Error al entrenar modelo de relevancia: {e}")
+
+Explicación:
+Funciones:
+load_relevance_model y save_relevance_model: Gestionan la persistencia del modelo de relevancia (un diccionario simple de pesos por message_id).
+
+save_feedback: Almacena la retroalimentación en la colección feedback con la consulta, message_id, relevancia y timestamp.
+
+get_feedback_weights: Devuelve los pesos actuales del modelo.
+
+train_relevance_model: Reentrena el modelo si hay suficientes retroalimentaciones, asignando pesos más bajos (0.5) a correos marcados como no relevantes.
+
+Modelo: Usa un enfoque simple (pesos por correo) para mantener la ligereza. Puede extenderse a un modelo más complejo (e.g., regresión logística) si se desea.
+
+Dependencias: Requiere scikit-learn y sentence-transformers.
+
+2. services/cache_service.py
+Este archivo gestiona el caché de consultas usando Redis para mejorar el rendimiento.
+python
+
+import redis
+import json
+import hashlib
+from config import REDIS_HOST, REDIS_PORT, REDIS_DB, CACHE_TTL
+
+# Conectar a Redis
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+
+def get_cached_result(query_hash):
+    """Obtiene un resultado del caché si existe."""
+    try:
+        cached = redis_client.get(query_hash)
+        if cached:
+            return json.loads(cached)
+        return None
+    except redis.RedisError as e:
+        print(f"Error al acceder al caché: {e}")
+        return None
+
+def cache_result(query_hash, result):
+    """Almacena un resultado en el caché con TTL."""
+    try:
+        redis_client.setex(query_hash, CACHE_TTL, json.dumps(result))
+        print(f"Resultado almacenado en caché para query_hash: {query_hash}")
+    except redis.RedisError as e:
+        print(f"Error al guardar en caché: {e}")
+
+Explicación:
+Funciones:
+get_cached_result: Recupera resultados almacenados en Redis usando el hash de la consulta.
+
+cache_result: Almacena resultados en Redis con un TTL definido (1 hora por defecto).
+
+Integración: Se usa en app.py para evitar reprocesar consultas frecuentes.
+
+Dependencias: Requiere redis-py.
+
+3. templates/index.html
+Esta plantilla HTML define la interfaz web con un formulario de búsqueda, una tabla de resultados (usando DataTables) y un modal para mostrar detalles de correos.
+html
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de Correos</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>Buscador de Correos</h1>
+        <form id="searchForm" class="mb-4">
+            <div class="input-group">
+                <input type="text" id="query" class="form-control" placeholder="Ej: Quiero conocer el estado del proyecto X" required>
+                <button type="submit" class="btn btn-primary">Buscar</button>
+            </div>
+        </form>
+        <table id="resultsTable" class="table table-striped" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Índice</th>
+                    <th>ID</th>
+                    <th>Fecha</th>
+                    <th>Remitente</th>
+                    <th>Destinatario</th>
+                    <th>Asunto</th>
+                    <th>Descripción</th>
+                    <th>Términos Relevantes</th>
+                    <th>Relevancia</th>
+                    <th>Explicación</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- Modal para detalles del correo -->
+    <div class="modal fade" id="emailModal" tabindex="-1" aria-labelledby="emailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="emailModalLabel">Detalles del Correo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Remitente:</strong> <span id="modalFrom"></span></p>
+                    <p><strong>Destinatario:</strong> <span id="modalTo"></span></p>
+                    <p><strong>Fecha:</strong> <span id="modalDate"></span></p>
+                    <p><strong>Asunto:</strong> <span id="modalSubject"></span></p>
+                    <p><strong>Cuerpo:</strong> <pre id="modalBody"></pre></p>
+                    <p><strong>Adjuntos:</strong> <span id="modalAttachments"></span></p>
+                    <p><strong>Contenido de Adjuntos:</strong> <pre id="modalAttachmentsContent"></pre></p>
+                    <p><strong>Resumen:</strong> <span id="modalSummary"></span></p>
+                    <p><strong>URLs:</strong> <span id="modalURLs"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
+
+Explicación:
+Formulario: Campo de texto para la consulta y botón de búsqueda.
+
+Tabla: Usa DataTables para mostrar resultados con columnas para índice, ID (clickable), fecha, remitente, destinatario, asunto, descripción, términos relevantes, relevancia, explicación, y un botón para marcar como no relevante.
+
+Modal: Muestra los detalles completos de un correo (remitente, destinatario, fecha, asunto, cuerpo, adjuntos, contenido de adjuntos, resumen).
+
+Dependencias: Incluye Bootstrap, jQuery, y DataTables desde CDN.
+
+4. static/js/main.js
+Este archivo contiene la lógica del frontend para manejar el formulario, mostrar resultados en la tabla, abrir modales y enviar retroalimentación.
+javascript
+
+$(document).ready(function() {
+    // Inicializar DataTable
+    const table = $('#resultsTable').DataTable({
+        columns: [
+            { data: 'index' },
+            { data: 'message_id', render: function(data) {
+                return `<a href="#" class="email-link" data-message-id="${data}">${data.substring(0, 8)}...</a>`;
+            }},
+            { data: 'date' },
+            { data: 'from' },
+            { data: 'to' },
+            { data: 'subject' },
+            { data: 'description' },
+            { data: 'relevant_terms', render: function(data) { return data.join(', '); }},
+            { data: 'relevance' },
+            { data: 'explanation' },
+            { data: null, render: function(data, type, row) {
+                return `<button class="btn btn-danger btn-sm feedback-btn" data-message-id="${row.message_id}" data-query="${$('#query').val()}">No Relevante</button>`;
+            }}
+        ]
+    });
+
+    // Manejar envío del formulario
+    $('#searchForm').submit(function(e) {
+        e.preventDefault();
+        const query = $('#query').val().trim();
+        if (!query) {
+            alert('Por favor, ingrese una consulta');
+            return;
+        }
+
+        $.ajax({
+            url: '/api/search',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ query: query }),
+            success: function(data) {
+                table.clear().rows.add(data).draw();
+            },
+            error: function(xhr) {
+                alert('Error al procesar la consulta: ' + xhr.responseJSON.error);
+            }
+        });
+    });
+
+    // Manejar clic en ID de correo para abrir modal
+    $('#resultsTable').on('click', '.email-link', function(e) {
+        e.preventDefault();
+        const messageId = $(this).data('message-id');
+
+        $.ajax({
+            url: `/api/email/${messageId}`,
+            method: 'GET',
+            success: function(data) {
+                $('#modalFrom').text(data.from);
+                $('#modalTo').text(data.to);
+                $('#modalDate').text(data.date);
+                $('#modalSubject').text(data.subject);
+                $('#modalBody').text(data.body);
+                $('#modalAttachments').text(data.attachments.join(', ') || 'Ninguno');
+                $('#modalAttachmentsContent').text(data.attachments_content.join('\n') || 'Ninguno');
+                $('#modalSummary').text(data.summary || 'Sin resumen');
+                $('#modalURLs').html(data.urls.map(url => `<a href="${url.url}" target="_blank">${url.url}</a>`).join(', ') || 'Ninguna');
+                $('#emailModal').modal('show');
+            },
+            error: function(xhr) {
+                alert('Error al cargar el correo: ' + xhr.responseJSON.error);
+            }
+        });
+    });
+
+    // Manejar clic en botón de retroalimentación
+    $('#resultsTable').on('click', '.feedback-btn', function() {
+        const messageId = $(this).data('message-id');
+        const query = $('#query').val().trim();
+
+        $.ajax({
+            url: '/api/feedback',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ query: query, message_id: messageId, is_relevant: false }),
+            success: function() {
+                alert('Retroalimentación enviada');
+                table.rowMaximizar filas de la tabla
+                $(this).closest('tr').remove(); // Eliminar fila de la tabla
+            },
+            error: function(xhr) {
+                alert('Error al enviar retroalimentación: ' + xhr.responseJSON.error);
+            }
+        });
+    });
+});
+
+Explicación:
+DataTable: Inicializa la tabla con columnas personalizadas, incluyendo un enlace clickable para el message_id y un botón de retroalimentación.
+
+Formulario: Envía la consulta al backend y actualiza la tabla con los resultados.
+
+Modal: Carga los detalles del correo al hacer clic en el ID.
+
+Retroalimentación: Envía la retroalimentación al marcar un correo como no relevante y elimina la fila de la tabla.
+
+5. static/css/style.css
+Estilos personalizados para la interfaz web.
+css
+
+body {
+    background-color: #f8f9fa;
+}
+
+.container {
+    max-width: 1200px;
+}
+
+#resultsTable {
+    font-size: 14px;
+}
+
+.email-link {
+    cursor: pointer;
+    color: #007bff;
+}
+
+.email-link:hover {
+    text-decoration: underline;
+}
+
+.feedback-btn {
+    padding: 5px;
+}
+
+.modal-body pre {
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+Explicación:
+Define estilos básicos para el fondo, la tabla, los enlaces, el botón de retroalimentación y el contenido del modal.
+
+Asegura que el cuerpo del correo y el contenido de los adjuntos sean legibles en el modal con desplazamiento.
+
+6. cli.py
+Herramienta de línea de comandos para ejecutar consultas en lenguaje natural y mostrar resultados en formato tabular.
+python
+
+import sys
+import requests
+import json
+from tabulate import tabulate
+from config import FLASK_DEBUG
+
+# URL del servidor Flask
+API_URL = 'http://localhost:5000/api/search'
+
+def search_emails(query):
+    """Ejecuta una consulta en el servidor Flask y muestra los resultados."""
+    try:
+        response = requests.post(API_URL, json={'query': query})
+        response.raise_for_status()
+        results = response.json()
+
+        if not results:
+            print("No se encontraron resultados.")
+            return
+
+        # Formatear resultados como tabla
+        table = [
+            [
+                r['index'],
+                r['message_id'][:8] + '...',
+                r['date'],
+                r['from'],
+                r['to'],
+                r['subject'],
+                r['description'][:50] + ('...' if len(r['description']) > 50 else ''),
+                ', '.join(r['relevant_terms']),
+                r['relevance'],
+                r['explanation']
+            ] for r in results
+        ]
+
+        headers = ['Índice', 'ID', 'Fecha', 'Remitente', 'Destinatario', 'Asunto', 'Descripción', 'Términos', 'Relevancia', 'Explicación']
+        print(tabulate(table, headers=headers, tablefmt='grid'))
+    except requests.RequestException as e:
+        print(f"Error al conectar con el servidor: {e}")
+    except json.JSONDecodeError as e:
+        print(f"Error al procesar la respuesta: {e}")
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print("Uso: python cli.py \"consulta\"")
+        sys.exit(1)
+    
+    query = ' '.join(sys.argv[1:])
+    search_emails(query)
+
+Explicación:
+Funcionalidad: Envía una consulta al servidor Flask y muestra los resultados en una tabla usando tabulate.
+
+Uso: python cli.py "dime que ofertas de viaje de menos de 100 euros hay en los correos"
+
+Dependencias: Requiere requests y tabulate (pip install tabulate).
+
+Instrucciones para Configuración
+Instalar Dependencias:
+bash
+
+pip install flask pymongo redis sentence-transformers requests python-dotenv tabulate scikit-learn
+
+Estructura de Directorios:
+bash
+
+mkdir -p services templates static/css static/js models
+touch services/feedback_service.py services/cache_service.py templates/index.html static/js/main.js static/css/style.css cli.py
+
+Configurar .env:
+Asegúrate de que el archivo .env esté configurado como se describió en config.py.
+
+Iniciar Servicios:
+bash
+
+sudo systemctl start mongod redis
+ollama serve
+python app.py
+
+Probar la CLI:
+bash
+
+python cli.py "quiero conocer el estado del proyecto X"
+
+Notas Finales
+Integración: Los archivos están diseñados para trabajar juntos con los previamente proporcionados (app.py, config.py, nlp_service.py, search_service.py).
+
+Escalabilidad: El sistema es ligero pero puede mejorarse con un modelo de aprendizaje más robusto (e.g., regresión logística) o caching más avanzado.
+
+Depuración: Los mensajes de error en consola ayudan a identificar problemas con MongoDB, Redis, o Ollama.
+
+Si necesitas ajustes, pruebas específicas, o un archivo adicional (como docker-compose.yml), házmelo saber. También puedo ayudarte a probar el sistema o a depurar cualquier problema. ¿Qué sigue?
+
+
+
+root@nucleus:/working/gdrive-local/Colab Notebooks/METIS-4.AI# python3 app.py 
+Traceback (most recent call last):
+  File "/working/gdrive-local/Colab Notebooks/METIS-4.AI/app.py", line 3, in <module>
+    from services.search_service import search_emails
+  File "/working/gdrive-local/Colab Notebooks/METIS-4.AI/services/search_service.py", line 6, in <module>
+    from services.feedback_service import get_feedback_weights
+  File "/working/gdrive-local/Colab Notebooks/METIS-4.AI/services/feedback_service.py", line 5, in <module>
+    from services.search_service import get_email_by_id
+ImportError: cannot import name 'get_email_by_id' from partially initialized module 'services.search_service' (most likely due to a circular import) (/working/gdrive-local/Colab Notebooks/METIS-4.AI/services/search_service.py)
+
+El error que estás enfrentando es un ImportError debido a una importación circular entre services/search_service.py y services/feedback_service.py. Esto ocurre porque:
+En search_service.py, se importa get_feedback_weights desde feedback_service.py.
+
+En feedback_service.py, se importa get_email_by_id desde search_service.py.
+
+Cuando Python intenta cargar uno de estos módulos, el otro aún no está completamente inicializado, lo que provoca el error.
+Solución
+Para resolver la importación circular, moveremos la importación de get_email_by_id dentro de la función train_relevance_model en feedback_service.py, donde se usa, en lugar de definirla en la parte superior del archivo. Esto evita que Python intente cargar search_service.py antes de que feedback_service.py esté listo. Además, verificaremos que no haya otras dependencias circulares.
+A continuación, te proporciono las versiones corregidas de los archivos afectados (services/feedback_service.py y services/search_service.py) para eliminar la importación circular. También incluiré una breve explicación de los cambios.
+Archivo Corregido: services/feedback_service.py
+python
+
+import os
+import pickle
+from pymongo import MongoClient
+from config import MONGO_URI, MONGO_DB_NAME, MONGO_FEEDBACK_COLLECTION, FEEDBACK_MODEL_PATH, FEEDBACK_MIN_SAMPLES
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+# Conectar a MongoDB
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+feedback_collection = db[MONGO_FEEDBACK_COLLECTION]
+
+# Cargar modelo de embeddings
+embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+
+# Cargar o inicializar modelo de relevancia
+def load_relevance_model():
+    if os.path.exists(FEEDBACK_MODEL_PATH):
+        with open(FEEDBACK_MODEL_PATH, 'rb') as f:
+            return pickle.load(f)
+    return {}  # Diccionario de pesos: {message_id: peso}
+
+def save_relevance_model(model):
+    os.makedirs(os.path.dirname(FEEDBACK_MODEL_PATH), exist_ok=True)
+    with open(FEEDBACK_MODEL_PATH, 'wb') as f:
+        pickle.dump(model, f)
+
+def save_feedback(query, message_id, is_relevant):
+    """Guarda la retroalimentación del usuario en MongoDB."""
+    try:
+        feedback = {
+            'query': query,
+            'message_id': message_id,
+            'is_relevant': is_relevant,
+            'timestamp': {'$date': '2025-06-02T19:33:00Z'}  # Usar la fecha actual del sistema
+        }
+        feedback_collection.insert_one(feedback)
+        print(f"Retroalimentación guardada: query={query}, message_id={message_id}, is_relevant={is_relevant}")
+    except Exception as e:
+        print(f"Error al guardar retroalimentación: {e}")
+
+def get_feedback_weights():
+    """Obtiene pesos de relevancia basados en retroalimentación."""
+    model = load_relevance_model()
+    return model
+
+def train_relevance_model():
+    """Entrena un modelo de relevancia basado en retroalimentación."""
+    try:
+        # Contar retroalimentaciones
+        feedback_count = feedback_collection.count_documents({})
+        if feedback_count < FEEDBACK_MIN_SAMPLES:
+            print(f"No hay suficientes retroalimentaciones ({feedback_count}/{FEEDBACK_MIN_SAMPLES})")
+            return
+
+        # Importar get_email_by_id aquí para evitar importación circular
+        from services.search_service import get_email_by_id
+
+        # Cargar retroalimentaciones
+        feedbacks = feedback_collection.find()
+        model = {}
+
+        for feedback in feedbacks:
+            message_id = feedback['message_id']
+            is_relevant = feedback['is_relevant']
+            
+            # Obtener el correo para extraer características
+            email = get_email_by_id(message_id)
+            if not email:
+                continue
+
+            # Asignar peso: 1.0 por defecto, 0.5 si no es relevante
+            weight = 0.5 if not is_relevant else 1.0
+            model[message_id] = weight
+
+        # Guardar modelo
+        save_relevance_model(model)
+        print("Modelo de relevancia reentrenado")
+    except Exception as e:
+        print(f"Error al entrenar modelo de relevancia: {e}")
+
+Cambios realizados:
+Moví la importación from services.search_service import get_email_by_id dentro de la función train_relevance_model, donde se usa, para evitar que se ejecute durante la inicialización del módulo.
+
+El resto del archivo permanece igual, ya que no introduce otras dependencias circulares.
+
+Archivo Corregido: services/search_service.py
+El archivo search_service.py ya es funcional, pero lo incluyo aquí para confirmar que no necesita cambios adicionales, ya que la importación circular se resuelve en feedback_service.py. Para referencia, aquí está el archivo sin modificaciones:
+python
+
+import zlib
+import numpy as np
+from pymongo import MongoClient
+from config import MONGO_URI, MONGO_DB_NAME, MONGO_EMAILS_COLLECTION
+from sentence_transformers import SentenceTransformer, util
+from services.feedback_service import get_feedback_weights
+
+# Conectar a MongoDB
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+emails_collection = db[MONGO_EMAILS_COLLECTION]
+
+# Cargar modelo de embeddings
+embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+
+def cosine_similarity(emb1, emb2):
+    """Calcula la similitud de coseno entre dos embeddings comprimidos."""
+    if emb1 is None or emb2 is None:
+        return 0.0
+    try:
+        # Descomprimir embeddings
+        emb1_array = np.frombuffer(zlib.decompress(emb1), dtype=np.float32)
+        emb2_array = np.frombuffer(zlib.decompress(emb2), dtype=np.float32)
+        return util.cos_sim(emb1_array, emb2_array).item()
+    except Exception as e:
+        print(f"Error al calcular similitud de coseno: {e}")
+        return 0.0
+
+def get_email_by_id(message_id):
+    """Obtiene un correo por su message_id."""
+    email = emails_collection.find_one(
+        {'message_id': message_id},
+        {
+            'from': 1, 'to': 1, 'subject': 1, 'date': 1, 'body': 1,
+            'attachments': 1, 'attachments_content': 1, 'summary': 1,
+            'relevant_terms': 1, 'semantic_domain': 1, 'urls': 1, '_id': 0
+        }
+    )
+    return email
+
+def search_emails(query, intent, terms, query_embedding):
+    """
+    Busca correos relevantes en MongoDB usando búsqueda textual y semántica.
+    """
+    try:
+        # Obtener pesos de retroalimentación
+        feedback_weights = get_feedback_weights()
+
+        # Búsqueda textual
+        text_query = {
+            '$text': {
+                '$search': ' '.join(terms + [intent]),
+                '$language': 'spanish'
+            }
+        }
+        
+        # Filtros por condiciones específicas (e.g., precio < 100€)
+        conditions = {}
+        if intent == 'ofertas_viaje':
+            conditions['semantic_domain'] = 'viajes'
+            if 'precio_max' in query.get('conditions', {}):
+                precio_max = query.get('conditions').get('precio_max', '')
+                if precio_max:
+                    precio_regex = r'\b\d+\s*(?:€|euros)\b'
+                    conditions['$or'] = [
+                        {'body': {'$regex': precio_regex}},
+                        {'attachments_content': {'$regex': precio_regex}}
+                    ]
+
+        # Consulta inicial
+        pipeline = [
+            {'$match': {**text_query, **conditions}},
+            {'$sort': {'score': {'$meta': 'textScore'}}},
+            {'$limit': 50}  # Limitar a 50 resultados iniciales
+        ]
+
+        results = list(emails_collection.aggregate(pipeline))
+        
+        # Calcular relevancia combinando búsqueda textual y semántica
+        ranked_results = []
+        for idx, email in enumerate(results, 1):
+            # Similitud semántica
+            semantic_score = cosine_similarity(query_embedding, email.get('embedding'))
+            
+            # Puntuación textual
+            text_score = email.get('score', 0) if '$meta' in email else 0
+            
+            # Ajuste por retroalimentación
+            feedback_weight = feedback_weights.get(email['message_id'], 1.0)
+            
+            # Relevancia combinada (0-100)
+            relevance = min(100, int((0.6 * semantic_score + 0.3 * text_score + 0.1 * feedback_weight) * 100))
+            
+            # Términos relevantes coincidentes
+            email_terms = [term for term in email.get('relevant_terms', {}).keys() if term in terms]
+            
+            # Explicación de relevancia
+            explanation = f"Seleccionado por: "
+            if semantic_score > 0.5:
+                explanation += f"alta similitud semántica ({int(semantic_score * 100)}%), "
+            if text_score > 0:
+                explanation += f"coincidencia textual con {', '.join(email_terms)}, "
+            if email['semantic_domain'] == intent:
+                explanation += f"dominio semántico '{intent}', "
+            if feedback_weight < 1.0:
+                explanation += f"ajustado por retroalimentación negativa, "
+            explanation = explanation.rstrip(", ")
+            
+            ranked_results.append({
+                'index': idx,
+                'message_id': email['message_id'],
+                'date': email['date'],
+                'from': email['from'],
+                'to': email['to'],
+                'subject': email['subject'],
+                'description': email.get('summary', 'Sin resumen'),
+                'relevant_terms': email_terms,
+                'relevance': relevance,
+                'explanation': explanation
+            })
+        
+        # Ordenar por relevancia descendente
+        ranked_results.sort(key=lambda x: x['relevance'], reverse=True)
+        return ranked_results[:10]  # Devolver los 10 más relevantes
+    except Exception as e:
+        print(f"Error al buscar correos: {e}")
+        return []
+
+Confirmación:
+Este archivo no requiere cambios, ya que la importación de get_feedback_weights desde feedback_service.py no causa problemas una vez que la importación circular se resuelve en feedback_service.py.
+
+Instrucciones para Aplicar la Solución
+Reemplazar services/feedback_service.py:
+Copia el contenido del archivo corregido services/feedback_service.py en tu directorio /working/gdrive-local/Colab Notebooks/METIS-4.AI/services/.
+
+Verificar services/search_service.py:
+Confirma que el contenido de search_service.py coincide con el proporcionado. No requiere cambios, pero asegúrate de que esté en el directorio correcto.
+
+Probar la Aplicación:
+Asegúrate de que MongoDB, Redis, y Ollama estén corriendo:
+bash
+
+sudo systemctl start mongod redis
+ollama serve
+
+Ejecuta nuevamente el servidor:
+bash
+
+python3 app.py
+
+Verificar Dependencias:
+Asegúrate de que todas las dependencias estén instaladas:
+bash
+
+pip install flask pymongo redis sentence-transformers requests python-dotenv tabulate scikit-learn
+
+Estructura de Directorios:
+Verifica que todos los archivos estén en su lugar:
+
+/working/gdrive-local/Colab Notebooks/METIS-4.AI/
+├── app.py
+├── config.py
+├── services/
+│   ├── nlp_service.py
+│   ├── search_service.py
+│   ├── feedback_service.py
+│   ├── cache_service.py
+├── templates/
+│   ├── index.html
+├── static/
+│   ├── css/
+│   │   ├── style.css
+│   ├── js/
+│   │   ├── main.js
+├── cli.py
+├── .env
+├── models/  # Crear si no existe
+
+Configurar .env:
+Asegúrate de que el archivo .env exista y contenga las configuraciones necesarias (como se mostró previamente).
+
+Depuración Adicional
+Si el problema persiste o aparece otro error, aquí hay pasos para depurar:
+Verificar Circularidad Residual:
+Revisa que no haya otras importaciones circulares. Puedes usar herramientas como python -m py_compile app.py para verificar errores de sintaxis o importación.
+
+Comprobar Servicios:
+Asegúrate de que MongoDB, Redis, y Ollama estén accesibles:
+bash
+
+mongo --host localhost --port 27017
+redis-cli -h localhost -p 6379 ping
+curl http://localhost:11434/api/generate
+
+Logs de Errores:
+Agrega más logs en app.py para depurar el arranque:
+python
+
+print("Iniciando app.py...")
+from services.search_service import search_emails, get_email_by_id
+print("search_service importado")
+
+Prueba Unitaria:
+Prueba importar los módulos individualmente en un script de prueba:
+python
+
+from services.feedback_service import get_feedback_weights
+from services.search_service import get_email_by_id
+print("Importaciones exitosas")
+
+Próximos Pasos
+Confirmar Corrección: Ejecuta python3 app.py y verifica si el error se resuelve. Si aparece otro error, compárteme el traceback completo.
+
+Siguientes Archivos: Todos los archivos solicitados ya han sido proporcionados (app.py, config.py, nlp_service.py, search_service.py, feedback_service.py, cache_service.py, index.html, main.js, style.css, cli.py). Si necesitas un archivo adicional (e.g., docker-compose.yml) o pruebas específicas, indícalas.
+
+Pruebas: Puedo ayudarte a probar la aplicación con consultas de ejemplo o a depurar problemas específicos.
+
+Por favor, dime si el error se resuelve o si necesitas asistencia adicional con la configuración, pruebas, o cualquier otro aspecto.
+
+el problema es este ahora. Necesito un modelo de log extensivo y robusto para todo el aplicativo, ahora tengo este error pero apenas tengo info. Por favor, dame los ficheros modificados para que todas las operaciones dejen log, desde el arranque e inicializacion del aplicativo hasta el fin de ejecucion, pasando por todas las llamadas y respuestas al backend. error: root@nucleus:/working/gdrive-local/Colab Notebooks/METIS-4.AI# python3 cly.py "quiero conocer que ofertas de vuelos baratos he recibido"
+Error al conectar con el servidor: 500 Server Error: INTERNAL SERVER ERROR for url: http://localhost:5000/api/search
+root@nucleus:/working/gdrive-local/Colab Notebooks/METIS-4.AI# python3 cly.py "que correos tengo sobre vuelos"
+Error al conectar con el servidor: 500 Server Error: INTERNAL SERVER ERROR for url: http://localhost:5000/api/search
+root@nucleus:/working/gdrive-local/Colab Notebooks/METIS-4.AI#
+
+El error 500 Server Error: INTERNAL SERVER ERROR indica que el servidor Flask (app.py) está fallando al procesar las solicitudes a la ruta /api/search. Dado que el mensaje de error de cli.py no proporciona detalles específicos, implementar un sistema de logging robusto en todos los componentes del aplicativo es crucial para diagnosticar el problema. A continuación, te proporciono una solución que incluye:
+Implementación de un sistema de logging extensivo que registre:
+Arranque e inicialización del aplicativo.
+
+Todas las operaciones en los servicios (NLP, búsqueda, retroalimentación, caché).
+
+Llamadas y respuestas al backend, incluyendo errores.
+
+Finalización de la ejecución.
+
+Archivos modificados con logging integrado para todos los componentes (app.py, services/nlp_service.py, services/search_service.py, services/feedback_service.py, services/cache_service.py, cli.py).
+
+Corrección del nombre del archivo cly.py a cli.py (parece un error tipográfico en tu comando).
+
+Instrucciones para depurar el error 500 y verificar los logs.
+
+Sistema de Logging
+El sistema de logging usará el módulo logging de Python para registrar eventos en un archivo (app.log) y en la consola, con niveles de severidad (DEBUG, INFO, WARNING, ERROR, CRITICAL). Los logs incluirán:
+Timestamp: Fecha y hora de cada evento.
+
+Nivel: Tipo de mensaje (INFO, ERROR, etc.).
+
+Módulo y función: Para identificar dónde ocurre el evento.
+
+Mensaje: Detalles específicos, incluyendo entradas y salidas de funciones.
+
+Contexto: Información relevante como consultas, IDs de correos, o errores.
+
+El archivo de log (app.log) se almacenará en el directorio raíz del proyecto y rotará cuando alcance 10 MB, manteniendo hasta 5 archivos de respaldo.
+Archivos Modificados
+A continuación, presento los archivos modificados con logging integrado. Cada archivo incluye un logger configurado y registra eventos clave. También corregiré cualquier problema potencial que pueda estar causando el error 500, como excepciones no manejadas en la ruta /api/search.
+1. app.py
+Modificado para incluir logging en el arranque, rutas, y manejo de errores.
+python
+
+import logging
+import logging.handlers
+from flask import Flask, request, render_template, jsonify
+from services.nlp_service import process_query
+from services.search_service import search_emails, get_email_by_id
+from services.feedback_service import save_feedback, train_relevance_model
+from services.cache_service import get_cached_result, cache_result
+import hashlib
+
+# Configurar logging
+logger = logging.getLogger('email_search_app')
+logger.setLevel(logging.DEBUG)
+
+# Handler para archivo con rotación
+file_handler = logging.handlers.RotatingFileHandler('app.log', maxBytes=10_000_000, backupCount=5)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'
+))
+
+# Handler para consola
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'
+))
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+logger.info("Iniciando aplicación Flask...")
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    logger.info("Accediendo a la página principal")
+    return render_template('index.html')
+
+@app.route('/api/search', methods=['POST'])
+def search():
+    logger.info("Procesando solicitud de búsqueda en /api/search")
+    try:
+        data = request.get_json()
+        logger.debug(f"Datos recibidos: {data}")
+        query = data.get('query', '').strip()
+        if not query:
+            logger.warning("Consulta vacía recibida")
+            return jsonify({'error': 'Consulta vacía'}), 400
+
+        # Generar hash de la consulta para caché
+        query_hash = hashlib.md5(query.encode('utf-8')).hexdigest()
+        logger.debug(f"Query hash generado: {query_hash}")
+
+        # Verificar caché
+        cached_result = get_cached_result(query_hash)
+        if cached_result:
+            logger.info(f"Resultado obtenido del caché para query_hash: {query_hash}")
+            return jsonify(cached_result)
+
+        # Procesar consulta con NLP
+        logger.debug(f"Procesando consulta con NLP: {query}")
+        processed_query = process_query(query)
+        logger.debug(f"Resultado del procesamiento NLP: {processed_query}")
+        intent = processed_query.get('intent', 'general')
+        terms = processed_query.get('terms', [])
+        embedding = processed_query.get('embedding', None)
+
+        # Buscar correos relevantes
+        logger.debug(f"Buscando correos para intent: {intent}, terms: {terms}")
+        results = search_emails(query, intent, terms, embedding)
+        logger.info(f"Encontrados {len(results)} correos relevantes")
+
+        # Almacenar en caché
+        cache_result(query_hash, results)
+        logger.debug(f"Resultados almacenados en caché para query_hash: {query_hash}")
+
+        return jsonify(results)
+    except Exception as e:
+        logger.error(f"Error al procesar la consulta: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Error al procesar la consulta: {str(e)}'}), 500
+
+@app.route('/api/email/<message_id>', methods=['GET'])
+def get_email(message_id):
+    logger.info(f"Obteniendo detalles del correo con message_id: {message_id}")
+    try:
+        email = get_email_by_id(message_id)
+        if not email:
+            logger.warning(f"Correo no encontrado: {message_id}")
+            return jsonify({'error': 'Correo no encontrado'}), 404
+        logger.debug(f"Correo encontrado: {email}")
+        return jsonify(email)
+    except Exception as e:
+        logger.error(f"Error al obtener el correo           
+        return jsonify({'error': f'Error al obtener el correo: {str(e)}'}), 500
+
+@app.route('/api/feedback', methods=['POST'])
+def feedback():
+    logger.info("Procesando retroalimentación")
+    try:
+        data = request.get_json()
+        logger.debug(f"Datos de retroalimentación: {data}")
+        query = data.get('query', '')
+        message_id = data.get('message_id', '')
+        is_relevant = data.get('is_relevant', False)
+
+        if not query or not message_id:
+            logger.warning("Faltan query o message_id en retroalimentación")
+            return jsonify({'error': 'Faltan query o message_id'}), 400
+
+        save_feedback(query, message_id, is_relevant)
+        train_relevance_model()
+        logger.info(f"Retroalimentación guardada para message_id: {message_id}")
+        return jsonify({'message': 'Retroalimentación guardada'})
+    except Exception as e:
+        logger.error(f"Error al guardar retroalimentación: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Error al guardar retroalimentación: {str(e)}'}), 500
+
+if __name__ == '__main__':
+    logger.info("Iniciando servidor Flask en puerto 5000")
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=True)
+    except Exception as e:
+        logger.critical(f"Error al iniciar el servidor: {str(e)}", exc_info=True)
+    finally:
+        logger.info("Finalizando ejecución del servidor")
+
+Cambios realizados:
+Configurado un logger con handlers para archivo (app.log) y consola.
+
+Añadido logging en cada ruta (/, /api/search, /api/email/<message_id>, /api/feedback) para registrar solicitudes, datos recibidos, resultados y errores.
+
+Incluido exc_info=True en los logs de error para capturar el traceback completo.
+
+Agregado logging para el arranque y finalización del servidor.
+
+2. services/nlp_service.py
+Modificado para incluir logging en todas las operaciones.
+python
+
+import hashlib
+import json
+import re
+import requests
+import zlib
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_TEMPERATURE, OLLAMA_MAX_TOKENS, OLLAMA_CONTEXT_SIZE, EMBEDDING_MODEL_NAME
+import logging
+
+# Configurar logging
+logger = logging.getLogger('email_search_app.nlp_service')
+logger.setLevel(logging.DEBUG)
+file_handler = logging.handlers.RotatingFileHandler('app.log', maxBytes=10_000_000, backupCount=5)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Cargar el modelo de embeddings
+logger.info("Cargando modelo de embeddings: %s", EMBEDDING_MODEL_NAME)
+embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+logger.info("Modelo de embeddings cargado exitosamente")
+
+# Caché en memoria para respuestas de Ollama
+response_cache = {}
+CACHE_LIMIT = 1000
+
+def call_ollama_api(prompt):
+    """Llama a la API de Ollama para procesar el prompt."""
+    logger.info("Llamando a la API de Ollama con prompt: %s", prompt[:50] + '...' if len(prompt) > 50 else prompt)
+    prompt_hash = hashlib.md5(prompt.encode('utf-8')).hexdigest()
+    
+    # Verificar caché
+    if prompt_hash in response_cache:
+        logger.debug("Respuesta obtenida del caché para prompt_hash: %s", prompt_hash)
+        return response_cache[prompt_hash]
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "temperature": OLLAMA_TEMPERATURE,
+        "num_predict": OLLAMA_MAX_TOKENS,
+        "num_ctx": OLLAMA_CONTEXT_SIZE
+    }
+
+    try:
+        logger.debug("Enviando solicitud a Ollama con payload: %s", payload)
+        response = requests.post(OLLAMA_URL, json=payload)
+        response.raise_for_status()
+        result = response.json()['response']
+        logger.debug("Respuesta de Ollama: %s", result[:100] + '...' if len(result) > 100 else result)
+        
+        # Almacenar en caché
+        if len(response_cache) >= CACHE_LIMIT:
+            response_cache.pop(list(response_cache.keys())[0])
+        response_cache[prompt_hash] = result
+        logger.debug("Respuesta almacenada en caché para prompt_hash: %s", prompt_hash)
+        return result
+    except requests.RequestException as e:
+        logger.error("Error al contactar con Ollama: %s", str(e), exc_info=True)
+        return f"Error: {str(e)}"
+
+def generate_embedding(text):
+    """Genera un embedding comprimido para el texto proporcionado."""
+    logger.info("Generando embedding para texto: %s", text[:50] + '...' if len(text) > 50 else text)
+    if not text:
+        logger.warning("Texto vacío recibido para generar embedding")
+        return None
+    try:
+        embedding = embedding_model.encode(text).tolist()
+        compressed_embedding = zlib.compress(np.array(embedding, dtype=np.float32).tobytes())
+        logger.debug("Embedding generado y comprimido")
+        return compressed_embedding
+    except Exception as e:
+        logger.error("Error al generar embedding: %s", str(e), exc_info=True)
+        return None
+
+def process_query(query):
+    """Procesa una consulta en lenguaje natural y devuelve la intención, términos relevantes y embedding."""
+    logger.info("Procesando consulta: %s", query)
+    # Normalizar consulta
+    query = query.lower().strip()
+    if not query:
+        logger.warning("Consulta vacía recibida")
+        return {"intent": "general", "terms": [], "embedding": None}
+
+    # Prompt para analizar la consulta
+    prompt = f"""
+    Analiza la siguiente consulta en lenguaje natural y devuelve EXCLUSIVAMENTE un objeto JSON con:
+    - "intent": La intención principal de la consulta (ejemplo: "estado_proyecto", "ofertas_viaje", "general").
+    - "terms": Lista de términos relevantes (palabras clave, nombres propios, conceptos).
+    - "conditions": Diccionario con condiciones específicas (ejemplo: {{"precio_max": "100€"}}).
+    
+    **Instrucciones**:
+    1. Identifica la intención principal basándote en el propósito de la consulta.
+    2. Extrae términos relevantes (nombres propios, palabras clave, conceptos específicos).
+    3. Detecta condiciones explícitas (como precios, fechas, cantidades) y devuélvelas en "conditions".
+    4. Devuelve solo un objeto JSON válido, sin comentarios ni texto adicional.
+    5. Ejemplo:
+    {{
+        "intent": "ofertas_viaje",
+        "terms": ["viaje", "vuelo", "hotel"],
+        "conditions": {{"precio_max": "100€"}}
+    }}
+
+    Consulta:
+    {query}
+    """
+
+    response = call_ollama_api(prompt)
+    try:
+        # Limpiar respuesta de Ollama
+        cleaned_response = response.strip()
+        if cleaned_response.startswith('```json'):
+            cleaned_response = cleaned_response[7:].strip()
+        if cleaned_response.endswith('```'):
+            cleaned_response = cleaned_response[:-3].strip()
+        result = json.loads(cleaned_response)
+        
+        # Validar y corregir resultado
+        intent = result.get('intent', 'general')
+        terms = result.get('terms', [])
+        conditions = result.get('conditions', {})
+        
+        # Generar embedding de la consulta
+        embedding = generate_embedding(query)
+        
+        logger.info("Consulta procesada: intent=%s, terms=%s, conditions=%s", intent, terms, conditions)
+        return {
+            "intent": intent,
+            "terms": terms,
+            "conditions": conditions,
+            "embedding": embedding
+        }
+    except json.JSONDecodeError as e:
+        logger.error("Error al parsear respuesta de Ollama: %s", str(e), exc_info=True)
+        return {
+            "intent": "general",
+            "terms": re.findall(r'\b\w+\b', query),
+            "conditions": {},
+            "embedding": generate_embedding(query)
+        }
+    except Exception as e:
+        logger.error("Error al procesar consulta: %s", str(e), exc_info=True)
+        return {"intent": "general", "terms": [], "conditions": {}, "embedding": None}
+
+Cambios realizados:
+Configurado logger específico para nlp_service.
+
+Añadido logging para la carga del modelo de embeddings, llamadas a Ollama, generación de embeddings y procesamiento de consultas.
+
+Incluido exc_info=True en los logs de error para capturar tracebacks.
+
+3. services/search_service.py
+Modificado para incluir logging en las operaciones de búsqueda.
+python
+
+import zlib
+import numpy as np
+from pymongo import MongoClient
+from config import MONGO_URI, MONGO_DB_NAME, MONGO_EMAILS_COLLECTION
+from sentence_transformers import SentenceTransformer, util
+from services.feedback_service import get_feedback_weights
+import logging
+
+# Configurar logging
+logger = logging.getLogger('email_search_app.search_service')
+logger.setLevel(logging.DEBUG)
+file_handler = logging.handlers.RotatingFileHandler('app.log', maxBytes=10_000_000, backupCount=5)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Conectar a MongoDB
+logger.info("Conectando a MongoDB: %s", MONGO_URI)
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+emails_collection = db[MONGO_EMAILS_COLLECTION]
+logger.info("Conexión a MongoDB establecida")
+
+# Cargar modelo de embeddings
+logger.info("Cargando modelo de embeddings: paraphrase-multilingual-MiniLM-L12-v2")
+embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+logger.info("Modelo de embeddings cargado exitosamente")
+
+def cosine_similarity(emb1, emb2):
+    """Calcula la similitud de coseno entre dos embeddings comprimidos."""
+    logger.debug("Calculando similitud de coseno")
+    if emb1 is None or emb2 is None:
+        logger.warning("Uno o ambos embeddings son None")
+        return 0.0
+    try:
+        emb1_array = np.frombuffer(zlib.decompress(emb1), dtype=np.float32)
+        emb2_array = np.frombuffer(zlib.decompress(emb2), dtype=np.float32)
+        similarity = util.cos_sim(emb1_array, emb2_array).item()
+        logger.debug("Similitud de coseno calculada: %s", similarity)
+        return similarity
+    except Exception as e:
+        logger.error("Error al calcular similitud de coseno: %s", str(e), exc_info=True)
+        return 0.0
+
+def get_email_by_id(message_id):
+    """Obtiene un correo por su message_id."""
+    logger.info("Obteniendo correo con message_id: %s", message_id)
+    try:
+        email = emails_collection.find_one(
+            {'message_id': message_id},
+            {
+                'from': 1, 'to': 1, 'subject': 1, 'date': 1, 'body': 1,
+                'attachments': 1, 'attachments_content': 1, 'summary': 1,
+                'relevant_terms': 1, 'semantic_domain': 1, 'urls': 1, '_id': 0
+            }
+        )
+        if not email:
+            logger.warning("Correo no encontrado: %s", message_id)
+        else:
+            logger.debug("Correo encontrado: %s", message_id)
+        return email
+    except Exception as e:
+        logger.error("Error al obtener correo: %s", str(e), exc_info=True)
+        return None
+
+def search_emails(query, intent, terms, query_embedding):
+    """Busca correos relevantes en MongoDB usando búsqueda textual y semántica."""
+    logger.info("Buscando correos para consulta: %s, intent: %s, terms: %s", query, intent, terms)
+    try:
+        feedback_weights = get_feedback_weights()
+        logger.debug("Pesos de retroalimentación obtenidos: %s", feedback_weights)
+
+        text_query = {
+            '$text': {
+                '$search': ' '.join(terms + [intent]),
+                '$language': 'spanish'
+            }
+        }
+        
+        conditions = {}
+        if intent == 'ofertas_viaje':
+            conditions['semantic_domain'] = 'viajes'
+            if 'precio_max' in query.get('conditions', {}):
+                precio_max = query.get('conditions').get('precio_max', '')
+                if precio_max:
+                    precio_regex = r'\b\d+\s*(?:€|euros)\b'
+                    conditions['$or'] = [
+                        {'body': {'$regex': precio_regex}},
+                        {'attachments_content': {'$regex': precio_regex}}
+                    ]
+        logger.debug("Condiciones de búsqueda: %s", conditions)
+
+        pipeline = [
+            {'$match': {**text_query, **conditions}},
+            {'$sort': {'score': {'$meta': 'textScore'}}},
+            {'$limit': 50}
+        ]
+        logger.debug("Pipeline de MongoDB: %s", pipeline)
+
+        results = list(emails_collection.aggregate(pipeline))
+        logger.info("Encontrados %s correos en la búsqueda inicial", len(results))
+        
+        ranked_results = []
+        for idx, email in enumerate(results, 1):
+            semantic_score = cosine_similarity(query_embedding, email.get('embedding'))
+            text_score = email.get('score', 0) if '$meta' in email else 0
+            feedback_weight = feedback_weights.get(email['message_id'], 1.0)
+            relevance = min(100, int((0.6 * semantic_score + 0.3 * text_score + 0.1 * feedback_weight) * 100))
+            
+            email_terms = [term for term in email.get('relevant_terms', {}).keys() if term in terms]
+            
+            explanation = f"Seleccionado por: "
+            if semantic_score > 0.5:
+                explanation += f"alta similitud semántica ({int(semantic_score * 100)}%), "
+            if text_score > 0:
+                explanation += f"coincidencia textual con {', '.join(email_terms)}, "
+            if email['semantic_domain'] == intent:
+                explanation += f"dominio semántico '{intent}', "
+            if feedback_weight < 1.0:
+                explanation += f"ajustado por retroalimentación negativa, "
+            explanation = explanation.rstrip(", ")
+            
+            ranked_results.append({
+                'index': idx,
+                'message_id': email['message_id'],
+                'date': email['date'],
+                'from': email['from'],
+                'to': email['to'],
+                'subject': email['subject'],
+                'description': email.get('summary', 'Sin resumen'),
+                'relevant_terms': email_terms,
+                'relevance': relevance,
+                'explanation': explanation
+            })
+            logger.debug("Correo procesado: message_id=%s, relevance=%s", email['message_id'], relevance)
+        
+        ranked_results.sort(key=lambda x: x['relevance'], reverse=True)
+        logger.info("Devolviendo %s correos más relevantes", len(ranked_results[:10]))
+        return ranked_results[:10]
+    except Exception as e:
+        logger.error("Error al buscar correos: %s", str(e), exc_info=True)
+        return []
+
+Cambios realizados:
+Configurado logger para search_service.
+
+Añadido logging para conexión a MongoDB, carga del modelo de embeddings, búsqueda de correos, cálculo de similitud y resultados.
+
+4. services/feedback_service.py
+Modificado para incluir logging en la gestión de retroalimentación.
+python
+
+import os
+import pickle
+from pymongo import MongoClient
+from config import MONGO_URI, MONGO_DB_NAME, MONGO_FEEDBACK_COLLECTION, FEEDBACK_MODEL_PATH, FEEDBACK_MIN_SAMPLES
+from sentence_transformers import SentenceTransformer
+import numpy as np
+import logging
+
+# Configurar logging
+logger = logging.getLogger('email_search_app.feedback_service')
+logger.setLevel(logging.DEBUG)
+file_handler = logging.handlers.RotatingFileHandler('app.log', maxBytes=10_000_000, backupCount=5)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Conectar a MongoDB
+logger.info("Conectando a MongoDB para feedback: %s", MONGO_URI)
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+feedback_collection = db[MONGO_FEEDBACK_COLLECTION]
+logger.info("Conexión a MongoDB para feedback establecida")
+
+# Cargar modelo de embeddings
+logger.info("Cargando modelo de embeddings para feedback")
+embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+logger.info("Modelo de embeddings para feedback cargado")
+
+def load_relevance_model():
+    logger.info("Cargando modelo de relevancia desde: %s", FEEDBACK_MODEL_PATH)
+    if os.path.exists(FEEDBACK_MODEL_PATH):
+        with open(FEEDBACK_MODEL_PATH, 'rb') as f:
+            model = pickle.load(f)
+            logger.debug("Modelo de relevancia cargado: %s", model)
+            return model
+    logger.debug("No se encontró modelo de relevancia, inicializando vacío")
+    return {}
+
+def save_relevance_model(model):
+    logger.info("Guardando modelo de relevancia en: %s", FEEDBACK_MODEL_PATH)
+    try:
+        os.makedirs(os.path.dirname(FEEDBACK_MODEL_PATH), exist_ok=True)
+        with open(FEEDBACK_MODEL_PATH, 'wb') as f:
+            pickle.dump(model, f)
+        logger.debug("Modelo de relevancia guardado")
+    except Exception as e:
+        logger.error("Error al guardar modelo de relevancia: %s", str(e), exc_info=True)
+
+def save_feedback(query, message_id, is_relevant):
+    """Guarda la retroalimentación del usuario en MongoDB."""
+    logger.info("Guardando retroalimentación: query=%s, message_id=%s, is_relevant=%s", query, message_id, is_relevant)
+    try:
+        feedback = {
+            'query': query,
+            'message_id': message_id,
+            'is_relevant': is_relevant,
+            'timestamp': {'$date': '2025-06-02T19:47:00Z'}  # Actualizar con fecha actual en producción
+        }
+        feedback_collection.insert_one(feedback)
+        logger.debug("Retroalimentación guardada exitosamente")
+    except Exception as e:
+        logger.error("Error al guardar retroalimentación: %s", str(e), exc_info=True)
+
+def get_feedback_weights():
+    """Obtiene pesos de relevancia basados en retroalimentación."""
+    logger.info("Obteniendo pesos de retroalimentación")
+    model = load_relevance_model()
+    logger.debug("Pesos de retroalimentación: %s", model)
+    return model
+
+def train_relevance_model():
+    """Entrena un modelo de relevancia basado en retroalimentación."""
+    logger.info("Entrenando modelo de relevancia")
+    try:
+        feedback_count = feedback_collection.count_documents({})
+        logger.debug("Número de retroalimentaciones: %s", feedback_count)
+        if feedback_count < FEEDBACK_MIN_SAMPLES:
+            logger.warning("No hay suficientes retroalimentaciones: %s/%s", feedback_count, FEEDBACK_MIN_SAMPLES)
+            return
+
+        from services.search_service import get_email_by_id
+        feedbacks = feedback_collection.find()
+        model = {}
+
+        for feedback in feedbacks:
+            message_id = feedback['message_id']
+            is_relevant = feedback['is_relevant']
+            
+            email = get_email_by_id(message_id)
+            if not email:
+                logger.warning("Correo no encontrado para feedback: %s", message_id)
+                continue
+
+            weight = 0.5 if not is_relevant else 1.0
+            model[message_id] = weight
+            logger.debug("Asignado peso %s a message_id: %s", weight, message_id)
+
+        save_relevance_model(model)
+        logger.info("Modelo de relevancia reentrenado")
+    except Exception as e:
+        logger.error("Error al entrenar modelo de relevancia: %s", str(e), exc_info=True)
+
+Cambios realizados:
+Configurado logger para feedback_service.
+
+Añadido logging para conexión a MongoDB, carga del modelo de embeddings, guardado de retroalimentación y entrenamiento del modelo.
+
+5. services/cache_service.py
+Modificado para incluir logging en operaciones de caché.
+python
+
+import redis
+import json
+import logging
+
+from config import REDIS_HOST, REDIS_PORT, REDIS_DB, CACHE_TTL
+
+# Configurar logging
+logger = logging.getLogger('email_search_app.cache_service')
+logger.setLevel(logging.DEBUG)
+file_handler = logging.handlers.RotatingFileHandler('app.log', maxBytes=10_000_000, backupCount=5)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Conectar a Redis
+logger.info("Conectando a Redis: %s:%s", REDIS_HOST, REDIS_PORT)
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+logger.info("Conexión a Redis establecida")
+
+def get_cached_result(query_hash):
+    """Obtiene un resultado del caché si existe."""
+    logger.info("Buscando en caché para query_hash: %s", query_hash)
+    try:
+        cached = redis_client.get(query_hash)
+        if cached:
+            logger.debug("Resultado encontrado en caché: %s", query_hash)
+            return json.loads(cached)
+        logger.debug("No se encontró resultado en caché para: %s", query_hash)
+        return None
+    except redis.RedisError as e:
+        logger.error("Error al acceder al caché: %s", str(e), exc_info=True)
+        return None
+
+def cache_result(query_hash, result):
+    """Almacena un resultado en el caché con TTL."""
+    logger.info("Almacenando resultado en caché para query_hash: %s", query_hash)
+    try:
+        redis_client.setex(query_hash, CACHE_TTL, json.dumps(result))
+        logger.debug("Resultado almacenado en caché")
+    except redis.RedisError as e:
+        logger.error("Error al guardar en caché: %s", str(e), exc_info=True)
+
+Cambios realizados:
+Configurado logger para cache_service.
+
+Añadido logging para conexión a Redis y operaciones de caché.
+
+6. cli.py
+Corregido el nombre del archivo (de cly.py a cli.py) y añadido logging.
+python
+
+import sys
+import requests
+import json
+from tabulate import tabulate
+from config import FLASK_DEBUG
+import logging
+
+# Configurar logging
+logger = logging.getLogger('email_search_app.cli')
+logger.setLevel(logging.DEBUG)
+file_handler = logging.handlers.RotatingFileHandler('app.log', maxBytes=10_000_000, backupCount=5)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s:%(funcName)s] %(message)s'))
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# URL del servidor Flask
+API_URL = 'http://localhost:5000/api/search'
+
+def search_emails(query):
+    """Ejecuta una consulta en el servidor Flask y muestra los resultados."""
+    logger.info("Ejecutando consulta desde CLI: %s", query)
+    try:
+        response = requests.post(API_URL, json={'query': query})
+        response.raise_for_status()
+        results = response.json()
+        logger.debug("Resultados recibidos: %s", results)
+
+        if not results:
+            logger.info("No se encontraron resultados para la consulta")
+            print("No se encontraron resultados.")
+            return
+
+        table = [
+            [
+                r['index'],
+                r['message_id'][:8] + '...',
+                r['date'],
+                r['from'],
+                r['to'],
+                r['subject'],
+                r['description'][:50] + ('...' if len(r['description']) > 50 else ''),
+                ', '.join(r['relevant_terms']),
+                r['relevance'],
+                r['explanation']
+            ] for r in results
+        ]
+
+        headers = ['Índice', 'ID', 'Fecha', 'Remitente', 'Destinatario', 'Asunto', 'Descripción', 'Términos', 'Relevancia', 'Explicación']
+        print(tabulate(table, headers=headers, tablefmt='grid'))
+        logger.info("Resultados mostrados en formato tabular")
+    except requests.RequestException as e:
+        logger.error("Error al conectar con el servidor: %s", str(e), exc_info=True)
+        print(f"Error al conectar con el servidor: {str(e)}")
+    except json.JSONDecodeError as e:
+        logger.error("Error al procesar la respuesta: %s", str(e), exc_info=True)
+        print(f"Error al procesar la respuesta: {str(e)}")
+
+if __name__ == '__main__':
+    logger.info("Iniciando ejecución de CLI")
+    if len(sys.argv) < 2:
+        logger.error("Uso incorrecto: se requiere una consulta")
+        print("Uso: python cli.py \"consulta\"")
+        sys.exit(1)
+    
+    query = ' '.join(sys.argv[1:])
+    search_emails(query)
+    logger.info("Finalizando ejecución de CLI")
+
+Cambios realizados:
+Corregido el nombre del archivo a cli.py.
+
+Configurado logger para cli.
+
+Añadido logging para el inicio, ejecución de consultas, resultados y errores.
+
+Diagnóstico del Error 500
+El error 500 indica un problema en el servidor, probablemente en la ruta /api/search. Posibles causas incluyen:
+Conexión a MongoDB fallida: Problemas con MONGO_URI o la base de datos email_database_metis2.
+
+Conexión a Redis fallida: Redis no está corriendo o la configuración es incorrecta.
+
+Problema con Ollama: El modelo mistral-custom no está disponible o la URL es incorrecta.
+
+Errores en la base de datos: El índice text_index no está creado o la colección emails está vacía.
+
+Excepciones no manejadas: Algún error en el procesamiento de la consulta (NLP o búsqueda).
+
+Los logs en app.log proporcionarán detalles. Después de ejecutar la aplicación, revisa app.log para identificar el error exacto.
+Instrucciones para Depurar
+Reemplazar Archivos:
+Copia los archivos modificados al directorio /working/gdrive-local/Colab Notebooks/METIS-4.AI/. Asegúrate de que la estructura de directorios sea correcta:
+bash
+
+mkdir -p services templates static/css static/js models
+mv app.py config.py services/nlp_service.py services/search_service.py services/feedback_service.py services/cache_service.py templates/index.html static/css/style.css static/js/main.js cli.py .
+
+Verificar Dependencias:
+Asegúrate de que todas las dependencias estén instaladas:
+bash
+
+pip install flask pymongo redis sentence-transformers requests python-dotenv tabulate scikit-learn
+
+Iniciar Servicios:
+Asegúrate de que MongoDB, Redis, y Ollama estén corriendo:
+bash
+
+sudo systemctl start mongod redis
+ollama serve
+
+Verifica:
+bash
+
+mongo --host localhost --port 27017
+redis-cli -h localhost -p 6379 ping
+curl http://localhost:11434/api/generate
+
+Ejecutar la Aplicación:
+Inicia el servidor:
+bash
+
+python3 app.py
+
+Probar con CLI:
+Corrige el nombre del archivo (cly.py → cli.py) y ejecuta:
+bash
+
+python3 cli.py "quiero conocer que ofertas de vuelos baratos he recibido"
+
+Revisar Logs:
+Abre app.log para inspeccionar los errores:
+bash
+
+cat app.log
+
+Busca mensajes con [ERROR] o [CRITICAL]. Por ejemplo, podrías encontrar:
+Error al contactar con Ollama: ...
+
+Error al conectar a MongoDB: ...
+
+Error al calcular similitud de coseno: ...
+
+Comparte el contenido relevante de app.log si necesitas ayuda para interpretar los errores.
+
+Posibles Problemas y Soluciones
+Ollama no responde:
+Verifica que el modelo mistral-custom esté cargado: ollama list.
+
+Si no está, cárgalo: ollama pull mistral-custom.
+
+Asegúrate de que OLLAMA_URL sea correcta (http://localhost:11434/api/generate).
+
+MongoDB no accesible:
+Verifica que la base de datos email_database_metis2 y la colección emails existan:
+bash
+
+mongo
+use email_database_metis2
+db.emails.findOne()
+
+Asegúrate de que el índice text_index esté creado:
+javascript
+
+db.emails.createIndex({
+    "from": "text",
+    "to": "text",
+    "subject": "text",
+    "body": "text",
+    "headers_text": "text",
+    "attachments": "text",
+    "attachments_content": "text",
+    "summary": "text",
+    "relevant_terms": "text",
+    "semantic_domain": "text"
+})
+
+Redis no responde:
+Verifica la conexión: redis-cli -h localhost -p 6379 ping.
+
+Asegúrate de que REDIS_HOST y REDIS_PORT sean correctos.
+
+Datos vacíos:
+Si la colección emails está vacía, el pipeline de búsqueda no devolverá resultados. Verifica:
+javascript
+
+db.emails.countDocuments()
+
+Próximos Pasos
+Confirmar Corrección:
+Ejecuta python3 app.py y luego python3 cli.py "quiero conocer que ofertas de vuelos baratos he recibido". Revisa app.log para identificar la causa del error 500.
+
+Compartir Logs:
+Si el error persiste, comparte el contenido de app.log (especialmente las líneas con [ERROR] o [CRITICAL]) para un diagnóstico más preciso.
+
+Archivos Adicionales:
+Los archivos templates/index.html, static/js/main.js, y static/css/style.css no fueron modificados, ya que el error ocurre en el backend. Si necesitas ajustes en el frontend, indícalos.
+
+Docker (Opcional):
+Si prefieres usar Docker para simplificar la configuración de MongoDB, Redis, y Ollama, puedo proporcionar un archivo docker-compose.yml.
+
+Pruebas Específicas:
+Puedo ayudarte a probar consultas específicas o a simular datos en MongoDB para depurar.
+
+Por favor, ejecuta la aplicación, revisa app.log, y comparte cualquier error relevante o indícame si necesitas ayuda con algún paso adicional.
+
+

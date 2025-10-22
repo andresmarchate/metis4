@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>METIS-4.AI - Buscador de Correos</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" defer></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+</head>
+<body>
+    <div id="loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: none; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 20px; border-radius: 8px; font-size: 1.5rem; color: #333;">Cargando...</div>
+    </div>
+    <div class="container">
+        <header class="header">
+            <img src="/static/images/logo.png" alt="METIS-4.AI Logo" class="logo">
+            <h1>METIS-4.AI - Buscador de Correos</h1>
+        </header>
+        {% if current_user.is_authenticated %}
+            <script>
+                var currentUser = "{{ current_user.username }}";
+            </script>
+            <div class="welcome-message">
+                <p>Bienvenido, {{ current_user.username }} | <a href="{{ url_for('logout') }}">Cerrar Sesión</a> | <a href="#" class="tab-link" data-tab="user">Datos del usuario</a></p>
+            </div>
+            <nav class="tabs">
+                <a href="#" class="tab-link active" data-tab="dashboard">Dashboard</a>
+                <a href="#" class="tab-link" data-tab="consultas">Consultas</a>
+                <a href="#" class="tab-link" data-tab="themes">Análisis de Temas</a>
+                <a href="#" class="tab-link" data-tab="deep-analysis">Deep Analysis</a>
+                <a href="#" class="tab-link" data-tab="conversations">Conversaciones</a>
+                <a href="#" class="tab-link" data-tab="conversations-themes">Análisis de Conversaciones</a>
+                <a href="#" class="tab-link" data-tab="deep-conversation-analysis">Análisis Profundo Conversaciones</a>
+                <a href="#" class="tab-link" data-tab="threads">Análisis de Hilos Temáticos</a>
+                <a href="#" class="tab-link" data-tab="agatta">AGATTA</a>
+            </nav>
+            <div id="dashboard-section" class="tab-content" style="display: block;">
+                <div id="dashboard-content"></div>
+            </div>
+            <div id="user-section" class="tab-content" style="display: none;">
+                <div id="user-content"></div>
+            </div>
+            <div id="consultas-section" class="tab-content" style="display: none;">
+                <form id="search-form">
+                    <div class="search-options">
+                        <input type="text" id="query" name="query" placeholder="Introduce tu consulta (ej. 'correos sobre almuerzos')" required>
+                        <label for="min-relevance">Relevancia Mínima (0-100):</label>
+                        <input type="number" id="min-relevance" name="min-relevance" min="0" max="100" value="10">
+                        <label for="clear-cache">Limpiar caché:</label>
+                        <input type="checkbox" id="clear-cache" name="clearCache">
+                        <button type="submit">Buscar</button>
+                    </div>
+                </form>
+                <div class="filter-options">
+                    <label for="filter-prompt">Filtro:</label>
+                    <input type="text" id="filter-prompt" placeholder="Ejemplo: elimina correos que incluyan reunión, proyecto">
+                    <button id="apply-filter">Aplicar Filtro</button>
+                    <button id="reset-filters">Reiniciar Filtros</button>
+                </div>
+                <div id="error-message"></div>
+                <div class="filters-container">
+                    <h3>Filtros Aplicados:</h3>
+                    <ul id="filters-list"></ul>
+                </div>
+                <div id="results">
+                    <p id="results-count" style="display: none;"></p>
+                    <button id="analyze-themes" style="display: none; margin: 10px 0;">Analizar Temas</button>
+                    <div class="table-container">
+                        <table id="results-table" style="display: none;">
+                            <thead>
+                                <tr>
+                                    <th>Índice</th>
+                                    <th>Fecha</th>
+                                    <th>Remitente</th>
+                                    <th>Destinatario</th>
+                                    <th>Asunto</th>
+                                    <th>Descripción</th>
+                                    <th>Relevancia</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-body"></tbody>
+                        </table>
+                    </div>
+                    <p id="no-results" style="display: none;">No se encontraron resultados.</p>
+                    <div id="pagination" style="display: none;">
+                        <button id="prev-page" disabled>Anterior</button>
+                        <span id="page-numbers"></span>
+                        <button id="next-page" disabled>Siguiente</button>
+                    </div>
+                </div>
+            </div>
+            <div id="themes-section" class="tab-content" style="display: none;">
+                <h2>Análisis de Temas</h2>
+                <div id="themes-list"></div>
+            </div>
+            <div id="deep-analysis-section" class="tab-content" style="display: none;">
+                <h2>Análisis Profundo</h2>
+                <div class="theme-selector-wrapper">
+                    <label>Seleccionar Temas:</label>
+                    <div id="theme-checkboxes" class="theme-checkboxes"></div>
+                    <button id="process-deep-analysis">Procesar</button>
+                </div>
+                <div id="deep-analysis-input" style="display: none;">
+                    <label for="deep-analysis-prompt">Consulta Profunda:</label>
+                    <textarea id="deep-analysis-prompt" placeholder="Ejemplo: ¿Qué decisiones clave se tomaron sobre los quesos franceses?"></textarea>
+                    <button id="submit-deep-analysis">Enviar Consulta</button>
+                    <button id="reset-deep-analysis-context">Resetear Contexto</button>
+                </div>
+                <div id="deep-analysis-response"></div>
+            </div>
+            <div id="conversations-section" class="tab-content" style="display: none;">
+                <h2>Conversaciones</h2>
+                <form id="conversations-form">
+                    <div class="conversation-options">
+                        <p class="bidirectional-note">La búsqueda incluye correos en ambos sentidos (de Correo 1 a Correo 2 y de Correo 2 a Correo 1).</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="email1">Correo 1:</label>
+                                <input type="text" id="email1" name="email1" placeholder="Escribe el primer correo (ej. Andres Marchante)" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="email2">Correo 2:</label>
+                                <input type="text" id="email2" name="email2" placeholder="Escribe el segundo correo (ej. secretaria@coitaoc.org)" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="start-date">Fecha Inicio:</label>
+                                <input type="date" id="start-date" name="start-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="end-date">Fecha Fin:</label>
+                                <input type="date" id="end-date" name="end-date" required>
+                            </div>
+                        </div>
+                        <button type="submit">Analizar Conversaciones</button>
+                    </div>
+                </form>
+                <div id="error-message-conversations"></div>
+                <div id="conversations-results">
+                    <p id="conversations-count" style="display: none;"></p>
+                    <button id="analyze-conversation-themes" style="display: none; margin: 10px 0;">Analizar Temas</button>
+                    <div class="table-container">
+                        <table id="conversations-table" style="display: none;">
+                            <thead>
+                                <tr>
+                                    <th>Índice</th>
+                                    <th>Fecha</th>
+                                    <th>Remitente</th>
+                                    <th>Destinatario</th>
+                                    <th>Asunto</th>
+                                    <th>Descripción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="conversations-body"></tbody>
+                        </table>
+                    </div>
+                    <div id="conversations-themes"></div>
+                </div>
+            </div>
+            <div id="conversations-themes-section" class="tab-content" style="display: none;">
+                <h2>Análisis de Conversaciones</h2>
+                <div id="conversations-themes-list"></div>
+            </div>
+            <div id="deep-conversation-analysis-section" class="tab-content" style="display: none;">
+                <h2>Análisis Profundo Conversaciones</h2>
+                <div class="theme-selector-wrapper">
+                    <label>Seleccionar Temas de Conversaciones:</label>
+                    <div id="conversation-theme-checkboxes" class="theme-checkboxes"></div>
+                    <button id="process-deep-conversation-analysis">Procesar</button>
+                </div>
+                <div id="deep-conversation-analysis-input" style="display: none;">
+                    <label for="deep-conversation-analysis-prompt">Consulta Profunda:</label>
+                    <textarea id="deep-conversation-analysis-prompt" placeholder="Ejemplo: ¿Qué detalles se acordaron sobre la visita en la conversación?"></textarea>
+                    <button id="submit-deep-conversation-analysis">Enviar Consulta</button>
+                    <button id="reset-deep-conversation-analysis-context">Resetear Contexto</button>
+                </div>
+                <div id="deep-conversation-analysis-response"></div>
+            </div>
+            <div id="threads-section" class="tab-content" style="display: none;">
+                <h2>Análisis de Hilos Temáticos</h2>
+                <form id="threads-form">
+                    <div class="search-options">
+                        <textarea id="threads-query" name="query" placeholder="Ejemplo: quiero conocer el estado ejected de mi viaje a Nueva York el próximo octubre" required></textarea>
+                        <button type="submit">Analizar Hilos</button>
+                    </div>
+                </form>
+                <div id="threads-error" style="display: none;"></div>
+                <div id="threads-results"></div>
+            </div>
+            <div id="agatta-section" class="tab-content" style="display: none;">
+                <h2>AGATTA</h2>
+                <div id="agatta-content"></div>
+                <div id="todos-list" class="todos-list"></div>
+            </div>
+            <div id="email-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close">×</span>
+                    <h2>Detalles del Correo</h2>
+                    <div id="email-details"></div>
+                    <button id="not-relevant">No Relevante</button>
+                </div>
+            </div>
+            <script src="/static/js/utils.js" defer></script>
+            <script src="/static/js/dashboard.js" defer></script>
+            <script src="/static/js/themes.js" defer></script>
+            <script src="/static/js/search.js" defer></script>
+            <script src="/static/js/deepAnalysis.js" defer></script>
+            <script src="/static/js/conversations.js" defer></script>
+            <script src="/static/js/deepConversationAnalysis.js" defer></script>
+            <script src="/static/js/user.js" defer></script>
+            <script src="/static/js/threads.js" defer></script>
+            <script src="/static/js/agatta.js" defer></script>
+            <script src="/static/js/main.js" defer></script>
+        {% else %}
+            <div class="auth-links">
+                <p><a href="{{ url_for('login') }}">Iniciar Sesión</a> | <a href="{{ url_for('register') }}">Registrarse</a></p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

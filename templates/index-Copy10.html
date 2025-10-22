@@ -1,0 +1,132 @@
+<!-- Artifact ID: d2cbc42a-fc80-4a0e-b392-3a4d58ca9f6f -->
+<!-- Version: a1b2c3d4-5e6f-7g8h-i9j0-k1l2m3n4o5 -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>METIS-4.AI - Buscador de Correos</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <!-- Include jQuery UI for autocomplete -->
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <img src="/static/images/logo.png" alt="METIS-4.AI Logo" class="logo">
+            <h1>METIS-4.AI - Buscador de Correos</h1>
+        </header>
+        <nav class="tabs">
+            <a href="#" class="tab-link active" data-tab="consultas">Consultas</a>
+            <a href="#" class="tab-link" data-tab="themes">Análisis de Temas</a>
+            <a href="#" class="tab-link" data-tab="deep-analysis">Análisis Profundo</a>
+            <a href="#" class="tab-link" data-tab="conversations">Conversaciones</a>
+        </nav>
+        <div id="search-section" class="tab-content active">
+            <form id="search-form">
+                <div class="search-options">
+                    <input type="text" id="query" name="query" placeholder="Introduce tu consulta (ej. 'correos sobre almuerzos')" required>
+                    <label for="min-relevance">Relevancia Mínima (0-100):</label>
+                    <input type="number" id="min-relevance" name="min-relevance" min="0" max="100" value="10">
+                    <label for="clear-cache">Limpiar caché:</label>
+                    <input type="checkbox" id="clear-cache" name="clearCache">
+                    <button type="submit">Buscar</button>
+                </div>
+            </form>
+            <div class="filter-options">
+                <label for="filter-prompt">Filtro:</label>
+                <input type="text" id="filter-prompt" placeholder="Ejemplo: elimina correos que incluyan reunión, proyecto">
+                <button id="apply-filter">Aplicar Filtro</button>
+                <button id="reset-filters">Reiniciar Filtros</button>
+            </div>
+            <div id="error-message"></div>
+            <h3>Filtros Aplicados:</h3>
+            <ul id="filters-list"></ul>
+            <div id="results">
+                <p id="results-count" style="display: none;"></p>
+                <button id="analyze-themes" style="display: none; margin: 10px 0;">Analizar Temas</button>
+                <div class="table-container">
+                    <table id="results-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Índice</th>
+                                <th>Fecha</th>
+                                <th>Remitente</th>
+                                <th>Destinatario</th>
+                                <th>Asunto</th>
+                                <th>Descripción</th>
+                                <th>Términos</th>
+                                <th>Relevancia</th>
+                                <th>Explicación</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body"></tbody>
+                    </table>
+                </div>
+                <p id="no-results" style="display: none;">No se encontraron resultados.</p>
+                <div id="pagination" style="display: none;">
+                    <button id="prev-page" disabled>Anterior</button>
+                    <span id="page-numbers"></span>
+                    <button id="next-page" disabled>Siguiente</button>
+                </div>
+            </div>
+        </div>
+        <div id="themes-section" class="tab-content">
+            <h2>Análisis de Temas</h2>
+            <div id="themes-list"></div>
+        </div>
+        <div id="deep-analysis-section" class="tab-content">
+            <h2>Análisis Profundo</h2>
+            <div class="theme-selector-wrapper">
+                <label for="theme-checkboxes">Seleccionar Temas:</label>
+                <div id="theme-checkboxes" class="theme-checkboxes">
+                    <!-- Populated dynamically by main.js -->
+                </div>
+                <button id="process-deep-analysis">Procesar</button>
+            </div>
+            <div id="deep-analysis-input" style="display: none;">
+                <label for="deep-analysis-prompt">Consulta Profunda:</label>
+                <textarea id="deep-analysis-prompt" placeholder="Ejemplo: ¿Qué decisiones clave se tomaron sobre los quesos franceses?"></textarea>
+                <button id="submit-deep-analysis">Enviar Consulta</button>
+                <button id="reset-deep-analysis-context">Resetear Contexto</button>
+            </div>
+            <div id="deep-analysis-response"></div>
+        </div>
+        <div id="conversations-section" class="tab-content">
+            <h2>Conversaciones</h2>
+            <form id="conversations-form">
+                <div class="conversation-options">
+                    <label for="sender">Remitente:</label>
+                    <input type="text" id="sender" name="sender" placeholder="Escribe el remitente (ej. Andres Marchante)" required>
+                    <label for="recipient">Destinatario:</label>
+                    <input type="text" id="recipient" name="recipient" placeholder="Escribe el destinatario (ej. secretaria@coitaoc.org)" required>
+                    <label for="start-date">Fecha Inicio:</label>
+                    <input type="date" id="start-date" name="start-date" required>
+                    <label for="end-date">Fecha Fin:</label>
+                    <input type="date" id="end-date" name="end-date" required>
+                    <button type="submit">Analizar Conversaciones</button>
+                </div>
+            </form>
+            <div id="error-message-conversations"></div>
+            <div id="conversations-results">
+                <p id="conversations-count" style="display: none;"></p>
+                <div id="conversations-themes"></div>
+            </div>
+        </div>
+        <div id="email-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">×</span>
+                <h2>Detalles del Correo</h2>
+                <div id="email-details"></div>
+                <button id="not-relevant">No Relevante</button>
+            </div>
+        </div>
+    </div>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

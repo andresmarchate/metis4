@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>METIS-4.AI - Buscador de Correos</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <img src="/static/images/logo.png" alt="METIS-4.AI Logo" class="logo">
+            <h1>METIS-4.AI - Buscador de Correos</h1>
+        </header>
+        <nav class="tabs">
+            <a href="#" class="tab-link active" data-tab="consultas">Consultas</a>
+            <a href="#" class="tab-link" data-tab="themes">Análisis de Temas</a>
+        </nav>
+        <div id="search-section" class="tab-content">
+            <form id="search-form">
+                <div class="search-options">
+                    <input type="text" id="query" name="query" placeholder="Introduce tu consulta (ej. 'correos sobre almuerzos')" required>
+                    <label for="min-relevance">Relevancia Mínima (0-100):</label>
+                    <input type="number" id="min-relevance" name="min-relevance" min="0" max="100" value="10">
+                    <label for="clear-cache">Limpiar caché:</label>
+                    <input type="checkbox" id="clear-cache" name="clearCache">
+                    <button type="submit">Buscar</button>
+                </div>
+            </form>
+            <div class="filter-options">
+                <label for="filter-prompt">Filtro:</label>
+                <input type="text" id="filter-prompt" placeholder="Ejemplo: elimina correos que incluyan reunión, proyecto">
+                <button id="apply-filter">Aplicar Filtro</button>
+                <button id="reset-filters">Reiniciar Filtros</button>
+            </div>
+            <div id="error-message"></div>
+            <h3>Filtros Aplicados:</h3>
+            <ul id="filters-list"></ul>
+            <div id="results">
+                <p id="results-count" style="display: none;"></p>
+                <button id="analyze-themes" style="display: none; margin: 10px 0;">Analizar Temas</button>
+                <div class="table-container">
+                    <table id="results-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Índice</th>
+                                <th>Fecha</th>
+                                <th>Remitente</th>
+                                <th>Destinatario</th>
+                                <th>Asunto</th>
+                                <th>Descripción</th>
+                                <th>Términos</th>
+                                <th>Relevancia</th>
+                                <th>Explicación</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body"></tbody>
+                    </table>
+                </div>
+                <p id="no-results" style="display: none;">No se encontraron resultados.</p>
+                <div id="pagination" style="display: none;">
+                    <button id="prev-page" disabled>Anterior</button>
+                    <span id="page-numbers"></span>
+                    <button id="next-page" disabled>Siguiente</button>
+                </div>
+            </div>
+        </div>
+        <div id="themes-section" class="tab-content" style="display: none; margin-top: 20px;">
+            <h2>Análisis de Temas</h2>
+            <div id="themes-list"></div>
+        </div>
+    </div>
+    <div id="email-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">×</span>
+            <h2>Detalles del Correo</h2>
+            <div id="email-details"></div>
+            <button id="not-relevant">No Relevante</button>
+        </div>
+    </div>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+#!/bin/sh
+
+
+cd "/working/gdrive-local/Colab Notebooks/METIS-4.AI"
+
+
+python agatta_tasks.py
